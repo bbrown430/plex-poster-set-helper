@@ -1,7 +1,6 @@
 import requests
 import sys
 import os.path
-import re
 import json
 from bs4 import BeautifulSoup
 from plexapi.server import PlexServer
