@@ -49,6 +49,7 @@ def cook_soup(url):
     else:
         sys.exit(f"Failed to retrieve the page. Status code: {response.status_code}")
         
+        
 
 def scrape_posters(url):
     movieposters = []
@@ -90,9 +91,13 @@ def scrape_posters(url):
             showposters.append(showposter)
 
         if media_type == "Movie":
-            splitstring = title_p.split(" (")
-            title = splitstring[0]
-            year = splitstring[1].split(")")[0]
+            title_split = title_p.split(" (")
+            if len(title_split[1]) != 5:
+                title = title_split[0] + " (" + title_split[1]
+            else:
+                title = title_split[0]
+            year = title_split[-1].split(")")[0]
+                
             movieposter = {}
             movieposter["title"] = title
             movieposter["url"] = poster_url
@@ -108,7 +113,7 @@ def upload_tv_poster(poster, tv):
         try:
             if poster["season"] == "Cover":
                 upload_target = tv_show
-                print(f"Uploading cover art for {poster['title']} - Season {poster['season']}.")
+                print(f"Uploading cover art for {poster['title']} - {poster['season']}.")
             elif poster["season"] == "Special":
                 upload_target = tv_show.season("Specials")
                 print(f"Uploading cover art for {poster['title']} - Specials.")
@@ -128,7 +133,7 @@ def upload_movie_poster(poster, movies):
         plex_movie.uploadPoster(poster["url"])
         print(f'Uploaded art for {poster["title"]}.')
     except:
-        print(f"{movie['title']} not found in Plex library.")
+        print(f"{poster['title']} not found in Plex library.")
         
 
 def set_posters(url, tv, movies):
