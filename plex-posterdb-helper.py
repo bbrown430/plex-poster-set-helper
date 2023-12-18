@@ -4,8 +4,8 @@ import os.path
 import re
 import json
 from bs4 import BeautifulSoup
-from urllib.parse import urlparse
 from plexapi.server import PlexServer
+import plexapi.exceptions
 
 def plex_setup():
     if os.path.exists("config.json"):
@@ -17,10 +17,20 @@ def plex_setup():
             movie_library = config["movie_library"]    
         except:
             sys.exit("Error with config.json file. Please consult the readme.md.") 
-        
-        plex = PlexServer(base_url, token)
-        tv = plex.library.section('TV Shows')
-        movies = plex.library.section('Movies')
+        try:
+            plex = PlexServer(base_url, token)
+        except requests.exceptions.RequestException:
+            sys.exit('Unable to connect to Plex server. Please check the "base_url" in config.json, and consult the readme.md.')
+        except plexapi.exceptions.Unauthorized:
+            sys.exit('Invalid Plex token. Please check the "token" in config.json, and consult the readme.md.')
+        try:
+            tv = plex.library.section(tv_library)
+        except plexapi.exceptions.NotFound:
+            sys.exit(f'TV library named "{tv_library}" not found. Please check the "tv_library" in config.json, and consult the readme.md.')
+        try:
+            movies = plex.library.section(movie_library)
+        except:
+            sys.exit(f'Movie library named "{movie_library}" not found. Please check the "movie_library" in config.json, and consult the readme.md.')
         return tv, movies
     else:
         sys.exit("No config.json file found. Please consult the readme.md.") 
@@ -91,48 +101,43 @@ def scrape_posters(url):
     
     return movieposters, showposters
 
-  
+
+def upload_tv_poster(poster, tv):
+    try:
+        tv_show = tv.get(poster["title"])
+        try:
+            if poster["season"] == "Cover":
+                upload_target = tv_show
+                print(f"Uploading cover art for {poster['title']} - Season {poster['season']}.")
+            elif poster["season"] == "Special":
+                upload_target = tv_show.season("Specials")
+                print(f"Uploading cover art for {poster['title']} - Specials.")
+            else:
+                upload_target = tv_show.season(poster["season"])
+                print(f"Uploading cover art for {poster['title']} - Season {poster['season']}.")
+            upload_target.uploadPoster(url=poster['url'])
+        except:
+            (f"{poster['title']} - {poster['season']} not found, skipping.")
+    except:
+        print(f"{poster['title']} not found, skipping.")
+
+
+def upload_movie_poster(poster, movies):
+    try:
+        plex_movie = movies.get(poster["title"], year=poster["year"])
+        plex_movie.uploadPoster(poster["url"])
+        print(f'Uploaded art for {poster["title"]}.')
+    except:
+        print(f"{movie['title']} not found in Plex library.")
+        
+
 def set_posters(url, tv, movies):
     movieposters, showposters = scrape_posters(url)
-    for movie in movieposters:
-        try:
-            plex_movie = movies.get(movie["title"], year=movie["year"])
-            plex_movie.uploadPoster(movie["url"])
-            print(f'Uploaded art for {movie["title"]}.')
-        except:
-            print(f"{movie['title']} not found in Plex library.")
-
-    for show in showposters:
-        # loop through show seasons
-        try:
-            tv_show = tv.get(show["title"])
-            if show["season"] == "Cover":
-                try:
-                    tv_show.uploadPoster(url=show['url'])
-                    print(f"Uploading cover art for {show['title']}.")
-                except:
-                    print(f"{show['title']} not found, skipping.")
-            elif show["season"] == "Special":
-                try:
-                    specials_season = tv_show.season("Specials")
-                    specials_season.uploadPoster(url=show['url'])
-                    print(f"Uploading cover art for {show['title']} - Specials.")
-                except:
-                    print(f"{show['title']} - {show['season']} not found, skipping.")
-            else:
-                try:
-                    season = tv_show.season(show["season"])
-                    season.uploadPoster(url=show['url'])
-                    print(f"Uploading cover art for {show['title']} - Season {show['season']}.")
-                except:
-                    print(f"{show['title']} - Season {show['season']} not found, skipping.")
-        except:
-            if show["season"] == "Cover":
-                print(f"{show['title']} not found, skipping.")
-            elif show["season"] == "Special":
-                print(f"Uploading cover art for {show['title']} - Specials.")
-            else:
-                print(f"{show['title']} - {show['season']} not found, skipping.")
+    for poster in movieposters:
+        upload_movie_poster(poster, movies)
+        
+    for poster in showposters:
+        upload_tv_poster(poster, tv)
 
 
 if __name__ == "__main__":
