@@ -14,10 +14,10 @@ plex-posterdb-helper is a tool to help upload sets of posters from theposterdb t
 pip install -r requirements.txt
 ```
 
-4. Rename exampleconfig.json to config.json, and populate with the proper information
+4. Rename `exampleconfig.json` to `config.json`, and populate with the proper information
 
 
 ## Usage
 
-Run plex-posterdb-helper.py
+Run `plex-posterdb-helper.py`
 
