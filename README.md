@@ -11,7 +11,7 @@ plex-posterdb-helper is a tool to help upload sets of posters from theposterdb t
 3. Install the required dependencies using
 
 ```bash
-pip install requirements.txt
+pip install -r requirements.txt
 ```
 
 4. Rename exampleconfig.json to config.json, and populate with the proper information
