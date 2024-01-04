@@ -1,6 +1,6 @@
 {
     "base_url": "",
     "token": "",
-    "tv_library": "",
-    "movie_library": ""
+    "tv_library": "TV Shows",
+    "movie_library": "Movies"
 }
