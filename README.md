@@ -22,7 +22,7 @@ pip install -r requirements.txt
         - **NOTE: this can be found [here](https://support.plex.tv/articles/204059436-finding-an-authentication-token-x-plex-token/)**
    - "tv_library"
         - the name of your TV Shows library (e.g. "TV Shows")
-    - "email_password"
+    - "movie_library"
         - the name of your Movies library (e.g. "Movies")
 
 ## Usage
