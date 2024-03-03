@@ -5,6 +5,7 @@ import json
 from bs4 import BeautifulSoup
 from plexapi.server import PlexServer
 import plexapi.exceptions
+import time
 
 def plex_setup():
     if os.path.exists("config.json"):
@@ -32,8 +33,7 @@ def plex_setup():
             sys.exit(f'Movie library named "{movie_library}" not found. Please check the "movie_library" in config.json, and consult the readme.md.')
         return tv, movies
     else:
-        sys.exit("No config.json file found. Please consult the readme.md.") 
-      
+        sys.exit("No config.json file found. Please consult the readme.md.")    
 
 def cook_soup(url):  
     headers = {
@@ -46,13 +46,12 @@ def cook_soup(url):
         soup = BeautifulSoup(response.text, 'html.parser')
         return soup
     else:
-        sys.exit(f"Failed to retrieve the page. Status code: {response.status_code}")
-        
-        
+        sys.exit(f"Failed to retrieve the page. Status code: {response.status_code}")    
 
 def scrape_posters(url):
     movieposters = []
     showposters = []
+    collectionposters = []
     
     if ("theposterdb.com" in url) and ("set" in url):
         soup = cook_soup(url)
@@ -89,7 +88,7 @@ def scrape_posters(url):
             showposter["season"] = split_season
             showposters.append(showposter)
 
-        if media_type == "Movie":
+        elif media_type == "Movie":
             title_split = title_p.split(" (")
             if len(title_split[1]) != 5:
                 title = title_split[0] + " (" + title_split[1]
@@ -102,8 +101,14 @@ def scrape_posters(url):
             movieposter["url"] = poster_url
             movieposter["year"] = int(year)
             movieposters.append(movieposter)
+        
+        elif media_type == "Collection":
+            collectionposter = {}
+            collectionposter["title"] = title_p
+            collectionposter["url"] = poster_url
+            collectionposters.append(collectionposter)
     
-    return movieposters, showposters
+    return movieposters, showposters, collectionposters
 
 
 def upload_tv_poster(poster, tv):
@@ -115,13 +120,14 @@ def upload_tv_poster(poster, tv):
                 print(f"Uploading cover art for {poster['title']} - {poster['season']}.")
             elif poster["season"] == "Special":
                 upload_target = tv_show.season("Specials")
-                print(f"Uploading cover art for {poster['title']} - Specials.")
+                print(f"Uploading art for {poster['title']} - Specials.")
             else:
                 upload_target = tv_show.season(poster["season"])
-                print(f"Uploading cover art for {poster['title']} - Season {poster['season']}.")
+                print(f"Uploading art for {poster['title']} - Season {poster['season']}.")
             upload_target.uploadPoster(url=poster['url'])
+            time.sleep(6) # too many requests prevention
         except:
-            (f"{poster['title']} - {poster['season']} not found, skipping.")
+            print(f"{poster['title']} - {poster['season']} not found, skipping.")
     except:
         print(f"{poster['title']} not found, skipping.")
 
@@ -131,19 +137,38 @@ def upload_movie_poster(poster, movies):
         plex_movie = movies.get(poster["title"], year=poster["year"])
         plex_movie.uploadPoster(poster["url"])
         print(f'Uploaded art for {poster["title"]}.')
+        time.sleep(6) # too many requests prevention
     except:
         print(f"{poster['title']} not found in Plex library.")
-        
+
+def upload_collection_poster(poster, movies):
+    try:
+        movie_collections = movies.collections()
+    except:
+        print("No collections found in the movie_library selected.")
+    found = False
+    for plex_collection in movie_collections:
+        if plex_collection.title == poster["title"]:
+            plex_collection.uploadPoster(poster["url"])
+            print(f'Uploading art for {poster["title"]}.')
+            found = True
+            time.sleep(6) # too many requests prevention
+            break
+    if not found:   
+        print(f"{poster['title']} not found in Plex library.")
 
 def set_posters(url, tv, movies):
-    movieposters, showposters = scrape_posters(url)
+    movieposters, showposters, collectionposters = scrape_posters(url)
+    
+    for poster in collectionposters:
+        upload_collection_poster(poster, tv, movies)
+        
     for poster in movieposters:
         upload_movie_poster(poster, movies)
         
     for poster in showposters:
         upload_tv_poster(poster, tv)
-
-
+        
 if __name__ == "__main__":
     tv, movies = plex_setup()
     
