@@ -161,7 +161,7 @@ def set_posters(url, tv, movies):
     movieposters, showposters, collectionposters = scrape_posters(url)
     
     for poster in collectionposters:
-        upload_collection_poster(poster, tv, movies)
+        upload_collection_poster(poster, movies)
         
     for poster in movieposters:
         upload_movie_poster(poster, movies)
