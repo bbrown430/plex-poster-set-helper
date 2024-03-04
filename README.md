@@ -1,6 +1,6 @@
 # plex-poster-set-helper
 
-plex-posterdb-helper is a tool to help upload sets of posters from ThePosterDB or MediUX to your Plex server in seconds!
+plex-poster=set-helper is a tool to help upload sets of posters from ThePosterDB or MediUX to your Plex server in seconds!
 
 ## Installation
 
@@ -27,5 +27,5 @@ pip install -r requirements.txt
 
 ## Usage
 
-Run `plex-posterdb-helper.py`
+Run `plex-poster-set-helper.py`
 
