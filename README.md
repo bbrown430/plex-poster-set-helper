@@ -4,17 +4,19 @@ plex-poster=set-helper is a tool to help upload sets of posters from ThePosterDB
 
 ## Installation
 
-1. Extract all files into a folder (can delete the .gitignore)
+1. [Install Python](https://www.python.org/downloads/) (if not installed already)
 
-2. Open a terminal in the folder
+2. Extract all files into a folder
 
-3. Install the required dependencies using
+3. Open a terminal in the folder
+
+4. Install the required dependencies using
 
 ```bash
 pip install -r requirements.txt
 ```
 
-4. Rename `exampleconfig.json` to `config.json`, and populate with the proper information
+5. Rename `exampleconfig.json` to `config.json`, and populate with the proper information
    - "base_url"
         - the IP and port of your plex server. (e.g. "http://12.345.67.890:32400/"
    - "token"
