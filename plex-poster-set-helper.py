@@ -330,7 +330,7 @@ if __name__ == "__main__":
     tv, movies = plex_setup()
     
     while True:
-        user_input = input("Enter ThePosterDB or MediUX set url (type 'stop' to end): ")
+        user_input = input("Enter a ThePosterDB set (or user) or a MediUX set url (type 'stop' to end): ")
         
         if user_input.lower() == 'stop':
             print("Stopping...")
