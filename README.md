@@ -31,3 +31,8 @@ pip install -r requirements.txt
 
 Run `plex-poster-set-helper.py`
 
+## Modes
+**Bulk Import**
+
+     1. Enter 'bulk' in the first input prompt
+     2. Enter the path to a .txt file with multiple links (on separate lines)
