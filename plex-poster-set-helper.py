@@ -330,10 +330,20 @@ if __name__ == "__main__":
     tv, movies = plex_setup()
     
     while True:
-        user_input = input("Enter a ThePosterDB set (or user) or a MediUX set url (type 'stop' to end): ")
+        user_input = input("Enter a ThePosterDB set (or user) or a MediUX set url: ")
         
         if user_input.lower() == 'stop':
             print("Stopping...")
             break
-
-        set_posters(user_input, tv, movies)
+        elif user_input.lower() == 'bulk':
+            file_path = input("Enter the path to the .txt file: ")
+            try:
+                with open(file_path, 'r') as file:
+                    urls = file.readlines()
+                for url in urls:
+                    url = url.strip()
+                    set_posters(url, tv, movies)
+            except FileNotFoundError:
+                print("File not found. Please enter a valid file path.")
+        else:
+            set_posters(user_input, tv, movies)
