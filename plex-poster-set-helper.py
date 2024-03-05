@@ -49,32 +49,7 @@ def cook_soup(url):
         return soup
     else:
         sys.exit(f"Failed to retrieve the page. Status code: {response.status_code}")    
-
-
-def upload_tv_poster2(poster, tv):
-    tv_show = tv.get(poster["title"])
-    if poster["season"] == "Cover":
-        upload_target = tv_show
-        print(f"Uploading cover art for {poster['title']} - {poster['season']}.")
-    elif poster["season"] == "0":
-        upload_target = tv_show.season("Specials")
-        print(f"Uploading art for {poster['title']} - Specials.")
-    elif poster["season"] == "Backdrop":
-        upload_target = tv_show
-        print(f"Uploading background art for {poster['title']}.")
-    elif poster["season"] >= 1:
-        if poster["episode"] == "Cover":
-            upload_target = tv_show.season(poster["season"])
-            print(f"Uploading art for {poster['title']} - Season {poster['season']}.")
-        elif poster["episode"] is not None:
-            upload_target = tv_show.season(poster["season"]).episode(poster["episode"])
-            print(f"Uploading art for {poster['title']} - Season {poster['season']} Episode {poster['episode']}.")
-    else:
-        return None
-    if poster["season"] != "Backdrop":
-        upload_target.uploadPoster(url=poster['url'])
-    elif poster["season"] == "Backdrop":
-        upload_target.uploadArt(url=poster['url'])
+        
 
 def upload_tv_poster(poster, tv):
     try:
@@ -243,22 +218,23 @@ def scrape_mediux(soup):
             media_type = "Movie"
                     
     for data in poster_data:
-        metadata = data.split('title')[1].split('"')[2]
+        metadata = data.split('title')[1].split('"')[2].split("\\")[0].strip()
+        file_type = data.split('fileType')[1].split('"')[2].split("\\")[0]
         
         if media_type == "Show":
-            if " - " in metadata:
+            if file_type == "title_card":
                 identifier = metadata.split(" - ")[1]
                 pattern = r'S(\d+) E(\d+)'
                 match = re.search(pattern, identifier)
                 if match:
                     season = int(match.group(1))
                     episode = int(match.group(2))
-                elif "Season" in identifier:
-                    season = int((identifier.split("Season "))[1].split("\\")[0])
-                    episode = "Cover"
-                elif "Backdrop" in identifier:
-                    season = "Backdrop"
-                    episode = None
+            elif file_type == "backdrop":
+                season = "Backdrop"
+                episode = None
+            elif "Season" in metadata:
+                season = int((metadata.split("Season "))[1])
+                episode = "Cover"
             else:
                 season = "Cover"
                 episode = None
@@ -268,7 +244,7 @@ def scrape_mediux(soup):
             elif " -" in metadata:
                 title = metadata.split(" -")[0].strip()
             else:
-                title = metadata.split(" \\")[0]
+                title = metadata
         
         elif media_type == "Movie":
             if " (" in metadata:
@@ -279,7 +255,7 @@ def scrape_mediux(soup):
                     title = title_split[0]
                 year = title_split[-1].split(")")[0]
             else:
-                title = metadata.split(" \\")[0]
+                title = metadata
             
         image_stub = data.split('filename_disk')[1].split('"')[2].split("\\")[0]
         poster_url = f"{base_url}{image_stub}{quality_suffix}"
