@@ -25,17 +25,21 @@ def plex_setup():
             sys.exit('Unable to connect to Plex server. Please check the "base_url" in config.json, and consult the readme.md.')
         except plexapi.exceptions.Unauthorized:
             sys.exit('Invalid Plex token. Please check the "token" in config.json, and consult the readme.md.')
+        if isinstance(tv_library, str):
+            tv_library = [tv_library] 
+        elif not isinstance(tv_library, list):
+            sys.exit("tv_library must be either a string or a list")
         tv = []
         for tv_lib in tv_library:
             try:
                 plex_tv = plex.library.section(tv_lib)
                 tv += plex_tv.all()
             except plexapi.exceptions.NotFound:
-                sys.exit(f'TV library named "{tv_library}" not found. Please check the "tv_library" in config.json, and consult the readme.md.')        
-            try:
-                movies = plex.library.section(movie_library)        
-            except plexapi.exceptions.NotFound:
-                sys.exit(f'Movie library named "{movie_library}" not found. Please check the "movie_library" in config.json, and consult the readme.md.')
+                sys.exit(f'TV library named "{tv_lib}" not found. Please check the "tv_library" in config.json, and consult the readme.md.')        
+        try:
+            movies = plex.library.section(movie_library)        
+        except plexapi.exceptions.NotFound:
+            sys.exit(f'Movie library named "{movie_library}" not found. Please check the "movie_library" in config.json, and consult the readme.md.')
         return tv, movies
     else:
         sys.exit("No config.json file found. Please consult the readme.md.")   
