@@ -16,7 +16,7 @@ def plex_setup():
             base_url = config["base_url"]
             token = config["token"]
             tv_library = config["tv_library"]
-            movie_library = config["movie_library"]    
+            movie_library = config["movie_library"]
         except:
             sys.exit("Error with config.json file. Please consult the readme.md.") 
         try:
@@ -26,11 +26,22 @@ def plex_setup():
         except plexapi.exceptions.Unauthorized:
             sys.exit('Invalid Plex token. Please check the "token" in config.json, and consult the readme.md.')
         try:
-            tv = plex.library.section(tv_library)
-        except plexapi.exceptions.NotFound:
+            tv = []
+            for tv_lib in tv_library:
+                plex_tv = plex.library.section(tv_lib)
+                lib_name = tv_lib
+                tv_dict = {"name": lib_name, "library": plex_tv}
+                tv.append(tv_dict)
+                
+        except plexapi.exceptions.NotFound: #TODO this will not work anymore
             sys.exit(f'TV library named "{tv_library}" not found. Please check the "tv_library" in config.json, and consult the readme.md.')
         try:
-            movies = plex.library.section(movie_library)
+            movies = []
+            for movie_lib in movie_library:
+                plex_movie = plex.library.section(movie_lib)
+                lib_name = movie_lib
+                movie_dict = {"name": lib_name, "library": plex_movie}
+                movies.append(movie_dict)            
         except:
             sys.exit(f'Movie library named "{movie_library}" not found. Please check the "movie_library" in config.json, and consult the readme.md.')
         return tv, movies
@@ -64,6 +75,34 @@ def title_cleaner(string):
     
     return title
 
+
+def find_movie(library_list, poster):
+    foundList = []
+    for library in library_list:
+        try:
+            media = library["library"].get(poster["title"], year=poster["year"])
+            foundList.append(library)
+        except plexapi.exceptions.NotFound:
+            pass
+    if len(foundList) > 1:
+        print(f"{poster['title']} found in multiple libraries.")
+        for index, found in enumerate(foundList):
+            print(f"\t[{index+1}] {found['name']}")
+        while True:
+            selected_index = input("Please select which library to edit: ")
+            if selected_index.isdigit():
+                selected_index = int(selected_index) - 1
+                if 0 <= selected_index < len(foundList):
+                    break
+            print("Invalid input. Please enter a valid number.")
+        selected_library = foundList[selected_index]
+        return selected_library["library"].get(poster["title"])
+    elif len(foundList) == 0:
+        print(f"{poster['title']} not found, skipping.")
+        return None
+    else:
+        return foundList[0]["library"].get(poster["title"])
+                
 
 def parse_string_to_dict(input_string):
     input_string = input_string.encode('utf-8').decode('unicode_escape')
@@ -116,13 +155,11 @@ def upload_tv_poster(poster, tv):
 
 
 def upload_movie_poster(poster, movies):
-    try:
-        plex_movie = movies.get(poster["title"], year=poster["year"])
+    plex_movie = find_movie(movies, poster)
+    if plex_movie is not None:
         plex_movie.uploadPoster(poster["url"])
         print(f'Uploaded art for {poster["title"]}.')
         time.sleep(6) # too many requests prevention
-    except:
-        print(f"{poster['title']} not found in Plex library.")
 
 
 def upload_collection_poster(poster, movies):
@@ -145,8 +182,8 @@ def upload_collection_poster(poster, movies):
 def set_posters(url, tv, movies):
     movieposters, showposters, collectionposters = scrape(url)
     
-    for poster in collectionposters:
-        upload_collection_poster(poster, movies)
+    #for poster in collectionposters:
+        #upload_collection_poster(poster, movies)
         
     for poster in movieposters:
         upload_movie_poster(poster, movies)
@@ -321,7 +358,7 @@ def scrape(url):
 
 if __name__ == "__main__":
     tv, movies = plex_setup()
-    
+        
     while True:
         user_input = input("Enter a ThePosterDB set (or user) or a MediUX set url: ")
         
