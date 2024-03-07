@@ -73,8 +73,8 @@ def title_cleaner(string):
 
 
 def parse_string_to_dict(input_string):
-    input_string = input_string.encode('utf-8').decode('unicode_escape')
     input_string = input_string.replace("\\","")
+    input_string = input_string.replace("u0026", "&")
 
     json_start_index = input_string.find('{')
     json_end_index = input_string.rfind('}')
