@@ -7,6 +7,7 @@ from plexapi.server import PlexServer
 import plexapi.exceptions
 import time
 import re
+import json
 
 def plex_setup():
     if os.path.exists("config.json"):
@@ -51,30 +52,55 @@ def cook_soup(url):
         sys.exit(f"Failed to retrieve the page. Status code: {response.status_code}")    
         
 
+def title_cleaner(string):
+    if " (" in string:
+        title = string.split(" (")[0]
+    elif " -" in string:
+        title = string.split(" -")[0]
+    else:
+        title = string
+    
+    title = title.strip()
+    
+    return title
+
+
+def parse_string_to_dict(input_string):
+    input_string = input_string.encode('utf-8').decode('unicode_escape')
+    input_string = input_string.replace("\\","")
+
+    json_start_index = input_string.find('{')
+    json_end_index = input_string.rfind('}')
+    json_data = input_string[json_start_index:json_end_index+1]
+
+    parsed_dict = json.loads(json_data)
+    return parsed_dict
+
+
 def upload_tv_poster(poster, tv):
     try:
         tv_show = tv.get(poster["title"])
         try:
             if poster["season"] == "Cover":
                 upload_target = tv_show
-                print(f"Uploading cover art for {poster['title']} - {poster['season']}.")
+                print(f"Uploaded cover art for {poster['title']} - {poster['season']}.")
             elif poster["season"] == 0:
                 upload_target = tv_show.season("Specials")
-                print(f"Uploading art for {poster['title']} - Specials.")
+                print(f"Uploaded art for {poster['title']} - Specials.")
             elif poster["season"] == "Backdrop":
                 upload_target = tv_show
-                print(f"Uploading background art for {poster['title']}.")
+                print(f"Uploaded background art for {poster['title']}.")
             elif poster["season"] >= 1:
                 if poster["episode"] == "Cover":
                     upload_target = tv_show.season(poster["season"])
-                    print(f"Uploading art for {poster['title']} - Season {poster['season']}.")
+                    print(f"Uploaded art for {poster['title']} - Season {poster['season']}.")
                 elif poster["episode"] is None:
                     upload_target = tv_show.season(poster["season"])
-                    print(f"Uploading art for {poster['title']} - Season {poster['season']}.")
+                    print(f"Uploaded art for {poster['title']} - Season {poster['season']}.")
                 elif poster["episode"] is not None:
                     try:
                         upload_target = tv_show.season(poster["season"]).episode(poster["episode"])
-                        print(f"Uploading art for {poster['title']} - Season {poster['season']} Episode {poster['episode']}.")
+                        print(f"Uploaded art for {poster['title']} - Season {poster['season']} Episode {poster['episode']}.")
                     except:
                         print(f"{poster['title']} - {poster['season']} Episode {poster['episode']} not found, skipping.")
             if poster["season"] == "Backdrop":
@@ -88,6 +114,7 @@ def upload_tv_poster(poster, tv):
     except:
         print(f"{poster['title']} not found, skipping.")
 
+
 def upload_movie_poster(poster, movies):
     try:
         plex_movie = movies.get(poster["title"], year=poster["year"])
@@ -96,6 +123,7 @@ def upload_movie_poster(poster, movies):
         time.sleep(6) # too many requests prevention
     except:
         print(f"{poster['title']} not found in Plex library.")
+
 
 def upload_collection_poster(poster, movies):
     try:
@@ -106,12 +134,13 @@ def upload_collection_poster(poster, movies):
     for plex_collection in movie_collections:
         if plex_collection.title == poster["title"]:
             plex_collection.uploadPoster(poster["url"])
-            print(f'Uploading art for {poster["title"]}.')
+            print(f'Uploaded art for {poster["title"]}.')
             found = True
             time.sleep(6) # too many requests prevention
             break
     if not found:   
         print(f"{poster['title']} not found in Plex library.")
+
 
 def set_posters(url, tv, movies):
     movieposters, showposters, collectionposters = scrape(url)
@@ -208,60 +237,48 @@ def scrape_mediux(soup):
         if 'filename_disk' in script.text:
             if 'title' in script.text:
                 if 'Set Link\\' not in script.text:
-                    poster_data.append(script.text)
+                    data_dict = parse_string_to_dict(script.text)
+                    poster_data.append(data_dict)
     
     for data in poster_data:
-        if "Season" in data:
+        if data["show_id"] is not None or data["show_id_backdrop"] is not None or data["episode_id"] is not None or data["season_id"] is not None or data["show_id"] is not None:
             media_type = "Show"
-            break
         else:
             media_type = "Movie"
                     
-    for data in poster_data:
-        metadata = data.split('title')[1].split('"')[2].split("\\")[0].strip()
-        file_type = data.split('fileType')[1].split('"')[2].split("\\")[0]
-        
+    for data in poster_data:        
         if media_type == "Show":
-            if file_type == "title_card":
-                identifier = metadata.split(" - ")[1]
+            if data["fileType"] == "title_card":
+                identifier = data["title"].split(" - ")[1]
                 pattern = r'S(\d+) E(\d+)'
                 match = re.search(pattern, identifier)
                 if match:
                     season = int(match.group(1))
                     episode = int(match.group(2))
-            elif file_type == "backdrop":
+            elif data["fileType"] == "backdrop":
                 season = "Backdrop"
                 episode = None
-            elif "Season" in metadata:
-                season = int((metadata.split("Season "))[1])
+            elif data["season_id"] is not None:
+                season = int((data["title"].split("Season "))[1])
                 episode = "Cover"
-            else:
+            elif data["show_id"] is not None:
                 season = "Cover"
                 episode = None
-                
-            if " (" in metadata:
-                title = metadata.split(" (")[0].strip()
-            elif " -" in metadata:
-                title = metadata.split(" -")[0].strip()
-            else:
-                title = metadata
-        
+
         elif media_type == "Movie":
-            if " (" in metadata:
-                title_split = metadata.split(" (")
+            if " (" in data["title"]:
+                title_split = data["title"].split(" (")
                 if len(title_split[1]) >= 8:
                     title = title_split[0] + " (" + title_split[1]
                 else:
                     title = title_split[0]
                 year = title_split[-1].split(")")[0]
             else:
-                title = metadata
+                title = data["title"]
             
-        image_stub = data.split('filename_disk')[1].split('"')[2].split("\\")[0]
+        image_stub = data["filename_disk"]
         poster_url = f"{base_url}{image_stub}{quality_suffix}"
-        
-        if("\\u") in title:
-            title = title.encode('utf-8').decode('unicode_escape')
+        title = title_cleaner(data["title"])
         
         if media_type == "Show":
             showposter = {}
