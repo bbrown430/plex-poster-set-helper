@@ -16,7 +16,7 @@ def plex_setup():
             base_url = config["base_url"]
             token = config["token"]
             tv_library = config["tv_library"]
-            movie_library = config["movie_library"]    
+            movie_library = config["movie_library"]
         except:
             sys.exit("Error with config.json file. Please consult the readme.md.") 
         try:
@@ -25,17 +25,20 @@ def plex_setup():
             sys.exit('Unable to connect to Plex server. Please check the "base_url" in config.json, and consult the readme.md.')
         except plexapi.exceptions.Unauthorized:
             sys.exit('Invalid Plex token. Please check the "token" in config.json, and consult the readme.md.')
-        try:
-            tv = plex.library.section(tv_library)
-        except plexapi.exceptions.NotFound:
-            sys.exit(f'TV library named "{tv_library}" not found. Please check the "tv_library" in config.json, and consult the readme.md.')
-        try:
-            movies = plex.library.section(movie_library)
-        except:
-            sys.exit(f'Movie library named "{movie_library}" not found. Please check the "movie_library" in config.json, and consult the readme.md.')
+        tv = []
+        for tv_lib in tv_library:
+            try:
+                plex_tv = plex.library.section(tv_lib)
+                tv += plex_tv.all()
+            except plexapi.exceptions.NotFound:
+                sys.exit(f'TV library named "{tv_library}" not found. Please check the "tv_library" in config.json, and consult the readme.md.')        
+            try:
+                movies = plex.library.section(movie_library)        
+            except plexapi.exceptions.NotFound:
+                sys.exit(f'Movie library named "{movie_library}" not found. Please check the "movie_library" in config.json, and consult the readme.md.')
         return tv, movies
     else:
-        sys.exit("No config.json file found. Please consult the readme.md.")    
+        sys.exit("No config.json file found. Please consult the readme.md.")   
 
 
 def cook_soup(url):  
@@ -77,9 +80,15 @@ def parse_string_to_dict(input_string):
     return parsed_dict
 
 
+def find_in_library(library, poster):
+    for media in library:
+        if media.title == poster["title"]:
+            return media
+    raise ValueError("Object with title '{}' not found".format(poster["title"]))
+
 def upload_tv_poster(poster, tv):
     try:
-        tv_show = tv.get(poster["title"])
+        tv_show = find_in_library(tv, poster)
         try:
             if poster["season"] == "Cover":
                 upload_target = tv_show
