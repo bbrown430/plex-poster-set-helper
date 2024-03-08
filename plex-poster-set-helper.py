@@ -33,13 +33,20 @@ def plex_setup():
         for tv_lib in tv_library:
             try:
                 plex_tv = plex.library.section(tv_lib)
-                tv += plex_tv.all()
+                tv.append(plex_tv)
             except plexapi.exceptions.NotFound:
                 sys.exit(f'TV library named "{tv_lib}" not found. Please check the "tv_library" in config.json, and consult the readme.md.')        
-        try:
-            movies = plex.library.section(movie_library)        
-        except plexapi.exceptions.NotFound:
-            sys.exit(f'Movie library named "{movie_library}" not found. Please check the "movie_library" in config.json, and consult the readme.md.')
+        if isinstance(movie_library, str):
+            movie_library = [movie_library] 
+        elif not isinstance(movie_library, list):
+            sys.exit("movie_library must be either a string or a list")
+        movies = []
+        for movie_lib in movie_library:
+            try:
+                plex_movie = plex.library.section(movie_lib)
+                movies.append(plex_movie)
+            except plexapi.exceptions.NotFound:
+                sys.exit(f'Movie library named "{movie_lib}" not found. Please check the "movie_library" in config.json, and consult the readme.md.')
         return tv, movies
     else:
         sys.exit("No config.json file found. Please consult the readme.md.")   
@@ -85,14 +92,37 @@ def parse_string_to_dict(input_string):
 
 
 def find_in_library(library, poster):
-    for media in library:
-        if media.title == poster["title"]:
-            return media
-    raise ValueError("Object with title '{}' not found".format(poster["title"]))
+    for lib in library:
+        try:
+            if "year" in poster:
+                library_item = lib.get(poster["title"], year=poster["year"])
+            else:
+                library_item = lib.get(poster["title"])
+            return library_item
+        except:
+            pass
+    print(f"{poster['title']} not found, skipping.")
+    return None
+
+
+def find_collection(library, poster):
+    found = False
+    for lib in library:
+        try:
+            movie_collections = lib.collections()
+        except:
+            pass
+        for plex_collection in movie_collections:
+            if plex_collection.title == poster["title"]:
+                return plex_collection
+    if not found:   
+        print(f"{poster['title']} not found in Plex library.")
+        
+
 
 def upload_tv_poster(poster, tv):
-    try:
-        tv_show = find_in_library(tv, poster)
+    tv_show = find_in_library(tv, poster)
+    if tv_show is not None:
         try:
             if poster["season"] == "Cover":
                 upload_target = tv_show
@@ -124,35 +154,24 @@ def upload_tv_poster(poster, tv):
                 time.sleep(6) # too many requests prevention
         except:
             print(f"{poster['title']} - Season {poster['season']} not found, skipping.")
-    except:
-        print(f"{poster['title']} not found, skipping.")
 
 
 def upload_movie_poster(poster, movies):
-    try:
-        plex_movie = movies.get(poster["title"], year=poster["year"])
-        plex_movie.uploadPoster(poster["url"])
+    movie = find_in_library(movies, poster)
+    if movie is not None:
+        movie.uploadPoster(poster["url"])
         print(f'Uploaded art for {poster["title"]}.')
-        time.sleep(6) # too many requests prevention
-    except:
-        print(f"{poster['title']} not found in Plex library.")
+        if poster["source"] == "posterdb":
+            time.sleep(6) # too many requests prevention
 
 
 def upload_collection_poster(poster, movies):
-    try:
-        movie_collections = movies.collections()
-    except:
-        print("No collections found in the movie_library selected.")
-    found = False
-    for plex_collection in movie_collections:
-        if plex_collection.title == poster["title"]:
-            plex_collection.uploadPoster(poster["url"])
-            print(f'Uploaded art for {poster["title"]}.')
-            found = True
-            time.sleep(6) # too many requests prevention
-            break
-    if not found:   
-        print(f"{poster['title']} not found in Plex library.")
+    collection = find_collection(movies, poster)
+    if collection is not None:
+        collection.uploadPoster(poster["url"])
+        print(f'Uploaded art for {poster["title"]}.')
+        if poster["source"] == "posterdb":
+                time.sleep(6) # too many requests prevention
 
 
 def set_posters(url, tv, movies):

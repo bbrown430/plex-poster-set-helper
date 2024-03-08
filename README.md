@@ -32,6 +32,17 @@ pip install -r requirements.txt
 Run `plex-poster-set-helper.py`
 
 ## Modes
+**Multiple Libraries**
+
+To utilize multiple libraries, update the `config.json` as follows:
+
+```bash
+"tv_library": ["TV Shows", "Kids TV Shows"],
+"movie_library": ["Movies", "Kids Movies"]
+```
+
+To clarify, use the names of your own libraries, those are just placeholders. Currently, this does not account for the same media being in both libraries. If the same media is included in both libraries, the poster will only be replaced for the topmost library in that list.
+
 **Bulk Import**
 
 1. Enter `bulk` in the first input prompt
