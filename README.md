@@ -45,7 +45,7 @@ To utilize multiple libraries, update the `config.json` as follows:
 
 To clarify, use the names of your own libraries, those are just placeholders. Currently, this does not account for the same media being in both libraries. If the same media is included in both libraries, the poster will only be replaced for the topmost library in that list.
 
-### Multiple Libraries
+### Bulk Import
 
 1. Enter `bulk` in the first input prompt
 2. Enter the path to a .txt file with multiple links (on separate lines)
