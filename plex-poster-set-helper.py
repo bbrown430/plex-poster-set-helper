@@ -122,7 +122,6 @@ def find_collection(library, poster):
 
 def upload_tv_poster(poster, tv):
     tv_show = find_in_library(tv, poster)
-    print(f"tv show - {tv_show}")
     if tv_show is not None:
         try:
             if poster["season"] == "Cover":
@@ -273,9 +272,6 @@ def scrape_mediux(soup):
                     data_dict = parse_string_to_dict(script.text)
                     poster_data = data_dict["set"]["files"]
 
-    print(json.dumps(data_dict, indent=4))
-
-    
     for data in poster_data:
         if data["show_id"] is not None or data["show_id_backdrop"] is not None or data["episode_id"] is not None or data["season_id"] is not None or data["show_id"] is not None:
             media_type = "Show"
