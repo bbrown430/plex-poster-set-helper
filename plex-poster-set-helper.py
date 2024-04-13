@@ -94,7 +94,7 @@ def parse_string_to_dict(input_string):
 def find_in_library(library, poster):
     for lib in library:
         try:
-            if "year" in poster:
+            if poster["year"] is not None:
                 library_item = lib.get(poster["title"], year=poster["year"])
             else:
                 library_item = lib.get(poster["title"])
@@ -210,7 +210,12 @@ def scrape_posterdb(soup):
         title_p = poster.find('p', class_='p-0 mb-1 text-break').string
 
         if media_type == "Show":
-            title = title_p.split(" (")[0]                   
+            title = title_p.split(" (")[0]
+            try:
+                year = int(title_p.split(" (")[1].split(")")[0])
+            except:
+                year = None
+                
             if " - " in title_p:
                 split_season = title_p.split(" - ")[1]
                 if split_season == "Specials":
@@ -225,6 +230,7 @@ def scrape_posterdb(soup):
             showposter["url"] = poster_url
             showposter["season"] = season
             showposter["episode"] = None
+            showposter["year"] = year
             showposter["source"] = "posterdb"
             showposters.append(showposter)
 
@@ -283,7 +289,10 @@ def scrape_mediux(soup):
 
             episodes = data_dict["set"]["show"]["seasons"]
             show_name = data_dict["set"]["show"]["name"]
-            year = int(data_dict["set"]["show"]["first_air_date"][:4])
+            try:
+                year = int(data_dict["set"]["show"]["first_air_date"][:4])
+            except:
+                year = None
 
             if data["fileType"] == "title_card":
                 episode_id = data["episode_id"]["id"]
