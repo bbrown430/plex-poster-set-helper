@@ -9,6 +9,8 @@ import time
 import re
 import json
 
+LABEL_RATING_KEYS = {}
+
 def plex_setup():
     if os.path.exists("config.json"):
         try:
@@ -91,6 +93,26 @@ def parse_string_to_dict(input_string):
     return parsed_dict
 
 
+def add_label_rating_key(library_item):
+
+    config = json.load(open("config.json"))
+    append_label = config.get("append_label", None)
+
+    MEDIA_TYPES_PARENT_VALUES = {'movie': 1, 'show': 2, 'season': 2, 'episode': 2, 'album': 9, 'track': 9}
+
+    existing_section = LABEL_RATING_KEYS.get(library_item.librarySectionID, {})
+
+    if append_label and append_label not in library_item.labels:
+        existing_keys = existing_section.get("keys", [])
+
+        if str(library_item.ratingKey) not in existing_keys:
+            existing_keys += [str(library_item.ratingKey)]
+
+        existing_type = existing_section.get("type", MEDIA_TYPES_PARENT_VALUES[library_item.type])
+
+        LABEL_RATING_KEYS[library_item.librarySectionID] = {"keys": existing_keys, "type": existing_type}
+
+
 def find_in_library(library, poster):
     for lib in library:
         try:
@@ -98,8 +120,11 @@ def find_in_library(library, poster):
                 library_item = lib.get(poster["title"], year=poster["year"])
             else:
                 library_item = lib.get(poster["title"])
+
+            add_label_rating_key(library_item)
             return library_item
-        except:
+        except Exception as e:
+            print(e)
             pass
     print(f"{poster['title']} not found, skipping.")
     return None
@@ -117,7 +142,30 @@ def find_collection(library, poster):
                 return plex_collection
     if not found:   
         print(f"{poster['title']} not found in Plex library.")
-        
+
+
+def update_plex_labels():
+
+    config = json.load(open("config.json"))
+
+    headers = {'X-Plex-Token': config["token"]}
+    
+    if LABEL_RATING_KEYS:
+        for key, item in LABEL_RATING_KEYS.items():
+
+            params = {'type': item["type"],
+                        'id': ','.join(item["keys"]),
+                        'label.locked': 1,
+                        'label[0].tag.tag': config["append_label"]
+                        }
+            
+            url = '{base_url}/library/sections/{section_id}/all'.format(base_url=config["base_url"], section_id=key)
+            r = requests.put(url, headers=headers, params=params)
+
+            if r.status_code == 200:
+                print("Labels applied successfully")
+            else:
+                print(f"Something went wrong when applying labels - {r.reason}")
 
 
 def upload_tv_poster(poster, tv):
@@ -392,3 +440,5 @@ if __name__ == "__main__":
                 print("File not found. Please enter a valid file path.")
         else:
             set_posters(user_input, tv, movies)
+
+        update_plex_labels()

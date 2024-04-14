@@ -2,5 +2,6 @@
     "base_url": "",
     "token": "",
     "tv_library": "TV Shows",
-    "movie_library": "Movies"
+    "movie_library": "Movies",
+    "append_label": "Plex Poster Set Helper"
 }
