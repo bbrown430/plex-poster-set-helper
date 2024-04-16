@@ -126,26 +126,26 @@ def upload_tv_poster(poster, tv):
         try:
             if poster["season"] == "Cover":
                 upload_target = tv_show
-                print(f"Uploaded cover art for {poster['title']} - {poster['season']}.")
+                print("Uploaded cover art for {} - {}.".format(poster['title'], poster['season']))
             elif poster["season"] == 0:
                 upload_target = tv_show.season("Specials")
-                print(f"Uploaded art for {poster['title']} - Specials.")
+                print("Uploaded art for {} - Specials.".format(poster['title']))
             elif poster["season"] == "Backdrop":
                 upload_target = tv_show
-                print(f"Uploaded background art for {poster['title']}.")
+                print("Uploaded background art for {}.".format(poster['title']))
             elif poster["season"] >= 1:
                 if poster["episode"] == "Cover":
                     upload_target = tv_show.season(poster["season"])
-                    print(f"Uploaded art for {poster['title']} - Season {poster['season']}.")
+                    print("Uploaded art for {} - Season {}.".format(poster['title'], poster['season']))
                 elif poster["episode"] is None:
                     upload_target = tv_show.season(poster["season"])
-                    print(f"Uploaded art for {poster['title']} - Season {poster['season']}.")
+                    print("Uploaded art for {} - Season {}.".format(poster['title'], poster['season']))
                 elif poster["episode"] is not None:
                     try:
                         upload_target = tv_show.season(poster["season"]).episode(poster["episode"])
-                        print(f"Uploaded art for {poster['title']} - Season {poster['season']} Episode {poster['episode']}.")
+                        print("Uploaded art for {} - Season {} Episode {}.".format(poster['title'], poster['season'], poster['episode']))
                     except:
-                        print(f"{poster['title']} - {poster['season']} Episode {poster['episode']} not found, skipping.")
+                        print("{} - Season {} Episode {} not found, skipping.".format(poster['title'], poster['season'], poster['episode']))
             if poster["season"] == "Backdrop":
                 upload_target.uploadArt(url=poster['url'])
             else:
@@ -153,7 +153,7 @@ def upload_tv_poster(poster, tv):
             if poster["source"] == "posterdb":
                 time.sleep(6) # too many requests prevention
         except:
-            print(f"{poster['title']} - Season {poster['season']} not found, skipping.")
+            print("{} - Season {} not found, skipping.".format(poster['title'], poster['season']))
 
 
 def upload_movie_poster(poster, movies):
@@ -351,24 +351,57 @@ def scrape(url):
         sys.exit("Poster set not found. Check the link you are inputting.")  
 
 
+
+def is_valid_url(url):
+    # Regular expression to check if the URL is valid
+    regex = r"^(http|https):\/\/[^\/]+\/sets\/\d+\/?$"
+    # Compile the regex pattern
+    pattern = re.compile(regex)
+    # Check if the URL matches the pattern
+    if re.match(pattern, url):
+        return True
+    else:
+        return False
+
+
 if __name__ == "__main__":
     tv, movies = plex_setup()
     
-    while True:
-        user_input = input("Enter a ThePosterDB set (or user) or a MediUX set url: ")
-        
-        if user_input.lower() == 'stop':
-            print("Stopping...")
-            break
-        elif user_input.lower() == 'bulk':
-            file_path = input("Enter the path to the .txt file: ")
-            try:
-                with open(file_path, 'r') as file:
-                    urls = file.readlines()
-                for url in urls:
-                    url = url.strip()
-                    set_posters(url, tv, movies)
-            except FileNotFoundError:
-                print("File not found. Please enter a valid file path.")
+    if len(sys.argv) > 1:
+        command = sys.argv[1]
+        if command.lower() == 'bulk':
+            if len(sys.argv) > 2:
+                file_path = sys.argv[2]
+                try:
+                    with open(file_path, 'r', encoding='utf-8') as file:
+                        urls = file.readlines()
+                    for url in urls:
+                        url = url.strip()
+                        if is_valid_url(url):
+                            set_posters(url, tv, movies)
+                except FileNotFoundError:
+                    print("File not found. Please enter a valid file path.")
+            else:
+                print("Please provide the path to the file.")
         else:
-            set_posters(user_input, tv, movies)
+            set_posters(command, tv, movies)
+    else:
+        while True:
+            user_input = input("Enter a ThePosterDB set (or user) or a MediUX set url: ")
+            
+            if user_input.lower() == 'stop':
+                print("Stopping...")
+                break
+            elif user_input.lower() == 'bulk':
+                file_path = input("Enter the path to the .txt file: ")
+                try:
+                    with open(file_path, 'r', encoding='utf-8') as file:
+                        urls = file.readlines()
+                    for url in urls:
+                        url = url.strip()
+                        if is_valid_url(url):
+                            set_posters(url, tv, movies)
+                except FileNotFoundError:
+                    print("File not found. Please enter a valid file path.")
+            else:
+                set_posters(user_input, tv, movies)
