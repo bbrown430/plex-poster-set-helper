@@ -59,7 +59,7 @@ def cook_soup(url):
 
     response = requests.get(url, headers=headers)
 
-    if response.status_code == 200:
+    if response.status_code == 200 or (response.status_code == 500 and "mediux.pro" in url):
         soup = BeautifulSoup(response.text, 'html.parser')
         return soup
     else:
@@ -94,7 +94,7 @@ def parse_string_to_dict(input_string):
 def find_in_library(library, poster):
     for lib in library:
         try:
-            if "year" in poster:
+            if poster["year"] is not None:
                 library_item = lib.get(poster["title"], year=poster["year"])
             else:
                 library_item = lib.get(poster["title"])
@@ -153,7 +153,7 @@ def upload_tv_poster(poster, tv):
             if poster["source"] == "posterdb":
                 time.sleep(6) # too many requests prevention
         except:
-            print("{} - Season {} not found, skipping.".format(poster['title'], poster['season']))
+            print(f"{poster['title']} - Season {poster['season']} not found, skipping.")
 
 
 def upload_movie_poster(poster, movies):
@@ -210,7 +210,12 @@ def scrape_posterdb(soup):
         title_p = poster.find('p', class_='p-0 mb-1 text-break').string
 
         if media_type == "Show":
-            title = title_p.split(" (")[0]                   
+            title = title_p.split(" (")[0]
+            try:
+                year = int(title_p.split(" (")[1].split(")")[0])
+            except:
+                year = None
+                
             if " - " in title_p:
                 split_season = title_p.split(" - ")[1]
                 if split_season == "Specials":
@@ -225,6 +230,7 @@ def scrape_posterdb(soup):
             showposter["url"] = poster_url
             showposter["season"] = season
             showposter["episode"] = None
+            showposter["year"] = year
             showposter["source"] = "posterdb"
             showposters.append(showposter)
 
@@ -258,20 +264,20 @@ def scrape_mediux(soup):
     quality_suffix = "&w=3840&q=80"
     
     scripts = soup.find_all('script')
+    
 
     media_type = None
     showposters = []
     movieposters = []
     collectionposters = []
-    poster_data = []
         
     for script in scripts:
-        if 'filename_disk' in script.text:
+        if 'files' in script.text:
             if 'title' in script.text:
                 if 'Set Link\\' not in script.text:
                     data_dict = parse_string_to_dict(script.text)
-                    poster_data.append(data_dict)
-    
+                    poster_data = data_dict["set"]["files"]
+
     for data in poster_data:
         if data["show_id"] is not None or data["show_id_backdrop"] is not None or data["episode_id"] is not None or data["season_id"] is not None or data["show_id"] is not None:
             media_type = "Show"
@@ -280,45 +286,59 @@ def scrape_mediux(soup):
                     
     for data in poster_data:        
         if media_type == "Show":
+
+            episodes = data_dict["set"]["show"]["seasons"]
+            show_name = data_dict["set"]["show"]["name"]
+            try:
+                year = int(data_dict["set"]["show"]["first_air_date"][:4])
+            except:
+                year = None
+
             if data["fileType"] == "title_card":
-                identifier = data["title"].split(" - ")[1]
-                pattern = r'S(\d+) E(\d+)'
-                match = re.search(pattern, identifier)
-                if match:
-                    season = int(match.group(1))
-                    episode = int(match.group(2))
+                episode_id = data["episode_id"]["id"]
+                season = data["episode_id"]["season_id"]["season_number"]
+                season_data = [episode for episode in episodes if episode["season_number"] == season][0]
+                episode_data = [episode for episode in season_data["episodes"] if episode["id"] == episode_id][0]
+                episode = episode_data["episode_number"]
             elif data["fileType"] == "backdrop":
                 season = "Backdrop"
                 episode = None
             elif data["season_id"] is not None:
-                season = int((data["title"].split("Season "))[1])
+                season_id = data["season_id"]["id"]
+                season_data = [episode for episode in episodes if episode["id"] == season_id][0]
                 episode = "Cover"
+                season = season_data["season_number"]
+                title = season_data["name"]
             elif data["show_id"] is not None:
                 season = "Cover"
                 episode = None
 
         elif media_type == "Movie":
-            if " (" in data["title"]:
-                title_split = data["title"].split(" (")
-                if len(title_split[1]) >= 8:
-                    title = title_split[0] + " (" + title_split[1]
-                else:
-                    title = title_split[0]
-                year = title_split[-1].split(")")[0]
-            else:
-                title = data["title"]
+
+            if data["movie_id"]:
+                if data_dict["set"]["movie"]:
+                    title = data_dict["set"]["movie"]["title"]
+                    year = int(data_dict["set"]["movie"]["release_date"][:4])
+                elif data_dict["set"]["collection"]:
+                    movie_id = data["movie_id"]["id"]
+                    movies = data_dict["set"]["collection"]["movies"]
+                    movie_data = [movie for movie in movies if movie["id"] == movie_id][0]
+                    title = movie_data["title"]
+                    year = int(movie_data["release_date"][:4])
+            elif data["collection_id"]:
+                title = data_dict["set"]["collection"]["collection_name"]
             
-        image_stub = data["filename_disk"]
+        image_stub = data["id"]
         poster_url = f"{base_url}{image_stub}{quality_suffix}"
-        title = title_cleaner(data["title"])
         
         if media_type == "Show":
             showposter = {}
-            showposter["title"] = title
+            showposter["title"] = show_name
             showposter["season"] = season
             showposter["episode"] = episode
             showposter["url"] = poster_url
             showposter["source"] = "mediux"
+            showposter["year"] = year
             showposters.append(showposter)
         
         elif media_type == "Movie":
