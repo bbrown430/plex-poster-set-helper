@@ -24,15 +24,28 @@ pip install -r requirements.txt
         - **NOTE: this can be found [here](https://support.plex.tv/articles/204059436-finding-an-authentication-token-x-plex-token/)**
    - "tv_library"
         - the name of your TV Shows library (e.g. "TV Shows")
+        - multiple libraries are also supported, check the `Multiple Libraries` section of the README
     - "movie_library"
         - the name of your Movies library (e.g. "Movies")
+        - multiple libraries are also supported, check the `Multiple Libraries` section of the README
 
 ## Usage
 
 Run `plex-poster-set-helper.py`
 
 ## Modes
-**Bulk Import**
+### Multiple Libraries
+
+To utilize multiple libraries, update the `config.json` as follows:
+
+```bash
+"tv_library": ["TV Shows", "Kids TV Shows"],
+"movie_library": ["Movies", "Kids Movies"]
+```
+
+To clarify, use the names of your own libraries, those are just placeholders. Currently, this does not account for the same media being in both libraries. If the same media is included in both libraries, the poster will only be replaced for the topmost library in that list.
+
+### Bulk Import
 
 1. Enter `bulk` in the first input prompt
 2. Enter the path to a .txt file with multiple links (on separate lines)
