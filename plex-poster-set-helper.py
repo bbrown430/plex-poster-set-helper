@@ -258,6 +258,16 @@ def scrape_posterdb(soup):
     
     return movieposters, showposters, collectionposters
 
+def get_mediux_filters():
+
+    config = json.load(open("config.json"))
+
+    return config.get("mediux_filters", None)
+
+def check_mediux_filter(mediux_filters, filter):
+
+    return filter in mediux_filters if mediux_filters else True
+
 
 def scrape_mediux(soup):
     base_url = "https://mediux.pro/_next/image?url=https%3A%2F%2Fapi.mediux.pro%2Fassets%2F"
@@ -270,6 +280,7 @@ def scrape_mediux(soup):
     showposters = []
     movieposters = []
     collectionposters = []
+    mediux_filters = get_mediux_filters()
         
     for script in scripts:
         if 'files' in script.text:
@@ -300,18 +311,21 @@ def scrape_mediux(soup):
                 season_data = [episode for episode in episodes if episode["season_number"] == season][0]
                 episode_data = [episode for episode in season_data["episodes"] if episode["id"] == episode_id][0]
                 episode = episode_data["episode_number"]
+                file_type = "title_card"
             elif data["fileType"] == "backdrop":
                 season = "Backdrop"
                 episode = None
+                file_type = "background"
             elif data["season_id"] is not None:
                 season_id = data["season_id"]["id"]
                 season_data = [episode for episode in episodes if episode["id"] == season_id][0]
                 episode = "Cover"
                 season = season_data["season_number"]
-                title = season_data["name"]
+                file_type = "season_cover"
             elif data["show_id"] is not None:
                 season = "Cover"
                 episode = None
+                file_type = "show_cover"
 
         elif media_type == "Movie":
 
@@ -339,7 +353,11 @@ def scrape_mediux(soup):
             showposter["url"] = poster_url
             showposter["source"] = "mediux"
             showposter["year"] = year
-            showposters.append(showposter)
+
+            if check_mediux_filter(mediux_filters=mediux_filters, filter=file_type):
+                showposters.append(showposter)
+            else:
+                print(f"{show_name} - skipping. '{file_type}' is not in 'mediux_filters'")
         
         elif media_type == "Movie":
             if "Collection" in title:
