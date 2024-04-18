@@ -85,10 +85,18 @@ def parse_string_to_dict(input_string):
 
     json_start_index = input_string.find('{')
     json_end_index = input_string.rfind('}')
-    json_data = input_string[json_start_index:json_end_index+1]
-
-    parsed_dict = json.loads(json_data)
-    return parsed_dict
+    
+    if json_start_index != -1 and json_end_index != -1:
+        json_data = input_string[json_start_index:json_end_index+1]
+        try:
+            parsed_dict = json.loads(json_data)
+            return parsed_dict
+        except json.JSONDecodeError as e:
+            print(f"Error decoding JSON: {e}")
+            return None
+    else:
+        print("No JSON data found.")
+        return None
 
 
 def find_in_library(library, poster):
