@@ -388,19 +388,6 @@ def scrape(url):
         sys.exit("Poster set not found. Check the link you are inputting.")  
 
 
-
-def is_valid_url(url):
-    # Regular expression to check if the URL is valid
-    regex = r"^(http|https):\/\/[^\/]+\/sets\/\d+\/?$"
-    # Compile the regex pattern
-    pattern = re.compile(regex)
-    # Check if the URL matches the pattern
-    if re.match(pattern, url):
-        return True
-    else:
-        return False
-
-
 if __name__ == "__main__":
     tv, movies = plex_setup()
     
@@ -414,8 +401,7 @@ if __name__ == "__main__":
                         urls = file.readlines()
                     for url in urls:
                         url = url.strip()
-                        if is_valid_url(url):
-                            set_posters(url, tv, movies)
+                        set_posters(url, tv, movies)
                 except FileNotFoundError:
                     print("File not found. Please enter a valid file path.")
             else:
@@ -436,8 +422,7 @@ if __name__ == "__main__":
                         urls = file.readlines()
                     for url in urls:
                         url = url.strip()
-                        if is_valid_url(url):
-                            set_posters(url, tv, movies)
+                        set_posters(url, tv, movies)
                 except FileNotFoundError:
                     print("File not found. Please enter a valid file path.")
             else:
