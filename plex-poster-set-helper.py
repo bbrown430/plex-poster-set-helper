@@ -275,7 +275,6 @@ def scrape_mediux(soup):
     
     scripts = soup.find_all('script')
     
-
     media_type = None
     showposters = []
     movieposters = []
