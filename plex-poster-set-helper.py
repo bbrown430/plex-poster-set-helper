@@ -118,7 +118,6 @@ def find_collection(library, poster):
         print(f"{poster['title']} not found in Plex library.")
         
 
-
 def upload_tv_poster(poster, tv):
     tv_show = find_in_library(tv, poster)
     if tv_show is not None:
@@ -257,11 +256,13 @@ def scrape_posterdb(soup):
     
     return movieposters, showposters, collectionposters
 
+
 def get_mediux_filters():
 
     config = json.load(open("config.json"))
 
     return config.get("mediux_filters", None)
+
 
 def check_mediux_filter(mediux_filters, filter):
 
@@ -385,16 +386,24 @@ def scrape(url):
         soup = cook_soup(url)
         return scrape_mediux(soup)
     else:
-        sys.exit("Poster set not found. Check the link you are inputting.")  
+        sys.exit("Poster set not found. Check the link you are inputting.")
 
 
+# Checks if url does not start with "//", "#", or is blank
+def is_not_comment(url):
+    regex = r"^(?!\/\/|#|^$)"
+    pattern = re.compile(regex)
+    return True if re.match(pattern, url) else False
+
+  
 def parse_urls(file_path):
     try:
         with open(file_path, 'r', encoding='utf-8') as file:
             urls = file.readlines()
         for url in urls:
             url = url.strip()
-            set_posters(url, tv, movies)
+            if is_not_comment(url):
+                set_posters(url, tv, movies)
     except FileNotFoundError:
         print("File not found. Please enter a valid file path.")
 
