@@ -7,7 +7,6 @@ from plexapi.server import PlexServer
 import plexapi.exceptions
 import time
 import re
-import json
 
 def plex_setup():
     if os.path.exists("config.json"):
@@ -86,9 +85,10 @@ def parse_string_to_dict(input_string):
     json_start_index = input_string.find('{')
     json_end_index = input_string.rfind('}')
     json_data = input_string[json_start_index:json_end_index+1]
-    
+
     parsed_dict = json.loads(json_data)
     return parsed_dict
+
 
 def find_in_library(library, poster):
     for lib in library:
@@ -118,33 +118,32 @@ def find_collection(library, poster):
         print(f"{poster['title']} not found in Plex library.")
         
 
-
 def upload_tv_poster(poster, tv):
     tv_show = find_in_library(tv, poster)
     if tv_show is not None:
         try:
             if poster["season"] == "Cover":
                 upload_target = tv_show
-                print("Uploaded cover art for {} - {}.".format(poster['title'], poster['season']))
+                print(f"Uploaded cover art for {poster['title']} - {poster['season']}.")
             elif poster["season"] == 0:
                 upload_target = tv_show.season("Specials")
-                print("Uploaded art for {} - Specials.".format(poster['title']))
+                print(f"Uploaded art for {poster['title']} - Specials.")
             elif poster["season"] == "Backdrop":
                 upload_target = tv_show
-                print("Uploaded background art for {}.".format(poster['title']))
+                print(f"Uploaded background art for {poster['title']}.")
             elif poster["season"] >= 1:
                 if poster["episode"] == "Cover":
                     upload_target = tv_show.season(poster["season"])
-                    print("Uploaded art for {} - Season {}.".format(poster['title'], poster['season']))
+                    print(f"Uploaded art for {poster['title']} - Season {poster['season']}.")
                 elif poster["episode"] is None:
                     upload_target = tv_show.season(poster["season"])
-                    print("Uploaded art for {} - Season {}.".format(poster['title'], poster['season']))
+                    print(f"Uploaded art for {poster['title']} - Season {poster['season']}.")
                 elif poster["episode"] is not None:
                     try:
                         upload_target = tv_show.season(poster["season"]).episode(poster["episode"])
-                        print("Uploaded art for {} - Season {} Episode {}.".format(poster['title'], poster['season'], poster['episode']))
+                        print(f"Uploaded art for {poster['title']} - Season {poster['season']} Episode {poster['episode']}.")
                     except:
-                        print("{} - Season {} Episode {} not found, skipping.".format(poster['title'], poster['season'], poster['episode']))
+                        print(f"{poster['title']} - {poster['season']} Episode {poster['episode']} not found, skipping.")
             if poster["season"] == "Backdrop":
                 upload_target.uploadArt(url=poster['url'])
             else:
@@ -257,11 +256,13 @@ def scrape_posterdb(soup):
     
     return movieposters, showposters, collectionposters
 
+
 def get_mediux_filters():
 
     config = json.load(open("config.json"))
 
     return config.get("mediux_filters", None)
+
 
 def check_mediux_filter(mediux_filters, filter):
 
@@ -385,45 +386,35 @@ def scrape(url):
         soup = cook_soup(url)
         return scrape_mediux(soup)
     else:
-        sys.exit("Poster set not found. Check the link you are inputting.")  
+        sys.exit("Poster set not found. Check the link you are inputting.")
+
+
+# Checks if url does not start with "//", "#", or is blank
+def is_not_comment(url):
+    regex = r"^(?!\/\/|#|^$)"
+    pattern = re.compile(regex)
+    return True if re.match(pattern, url) else False
 
 
 if __name__ == "__main__":
     tv, movies = plex_setup()
     
-    if len(sys.argv) > 1:
-        command = sys.argv[1]
-        if command.lower() == 'bulk':
-            if len(sys.argv) > 2:
-                file_path = sys.argv[2]
-                try:
-                    with open(file_path, 'r', encoding='utf-8') as file:
-                        urls = file.readlines()
-                    for url in urls:
-                        url = url.strip()
+    while True:
+        user_input = input("Enter a ThePosterDB set (or user) or a MediUX set url: ")
+        
+        if user_input.lower() == 'stop':
+            print("Stopping...")
+            break
+        elif user_input.lower() == 'bulk':
+            file_path = input("Enter the path to the .txt file: ")
+            try:
+                with open(file_path, 'r') as file:
+                    urls = file.readlines()
+                for url in urls:
+                    url = url.strip()
+                    if is_not_comment(url):
                         set_posters(url, tv, movies)
-                except FileNotFoundError:
-                    print("File not found. Please enter a valid file path.")
-            else:
-                print("Please provide the path to the file.")
+            except FileNotFoundError:
+                print("File not found. Please enter a valid file path.")
         else:
-            set_posters(command, tv, movies)
-    else:
-        while True:
-            user_input = input("Enter a ThePosterDB set (or user) or a MediUX set url: ")
-            
-            if user_input.lower() == 'stop':
-                print("Stopping...")
-                break
-            elif user_input.lower() == 'bulk':
-                file_path = input("Enter the path to the .txt file: ")
-                try:
-                    with open(file_path, 'r', encoding='utf-8') as file:
-                        urls = file.readlines()
-                    for url in urls:
-                        url = url.strip()
-                        set_posters(url, tv, movies)
-                except FileNotFoundError:
-                    print("File not found. Please enter a valid file path.")
-            else:
-                set_posters(user_input, tv, movies)
+            set_posters(user_input, tv, movies)
