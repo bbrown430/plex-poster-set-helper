@@ -3,5 +3,6 @@
     "token": "",
     "tv_library": "TV Shows",
     "movie_library": "Movies",
-    "append_label": "Plex Poster Set Helper"
+    "append_label": "Plex Poster Set Helper",
+    "mediux_filters": ["title_card", "background", "season_cover", "show_cover"]
 }
