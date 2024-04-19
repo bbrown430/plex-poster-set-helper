@@ -395,26 +395,45 @@ def is_not_comment(url):
     pattern = re.compile(regex)
     return True if re.match(pattern, url) else False
 
+  
+def parse_urls(file_path):
+    try:
+        with open(file_path, 'r', encoding='utf-8') as file:
+            urls = file.readlines()
+        for url in urls:
+            url = url.strip()
+            if is_not_comment(url):
+                set_posters(url, tv, movies)
+    except FileNotFoundError:
+        print("File not found. Please enter a valid file path.")
+
 
 if __name__ == "__main__":
     tv, movies = plex_setup()
     
-    while True:
-        user_input = input("Enter a ThePosterDB set (or user) or a MediUX set url: ")
-        
-        if user_input.lower() == 'stop':
-            print("Stopping...")
-            break
-        elif user_input.lower() == 'bulk':
-            file_path = input("Enter the path to the .txt file: ")
-            try:
-                with open(file_path, 'r') as file:
-                    urls = file.readlines()
-                for url in urls:
-                    url = url.strip()
-                    if is_not_comment(url):
-                        set_posters(url, tv, movies)
-            except FileNotFoundError:
-                print("File not found. Please enter a valid file path.")
+    # arguments were provided
+    if len(sys.argv) > 1:
+        command = sys.argv[1]
+        # bulk command was used
+        if command.lower() == 'bulk':
+            if len(sys.argv) > 2:
+                file_path = sys.argv[2]
+                parse_urls(file_path)
+            else:
+                print("Please provide the path to the .txt file.")
+        # a single url was provided
         else:
-            set_posters(user_input, tv, movies)
+            set_posters(command, tv, movies)
+    # user input
+    else:
+        while True:
+            user_input = input("Enter a ThePosterDB set (or user) or a MediUX set url: ")
+            
+            if user_input.lower() == 'stop':
+                print("Stopping...")
+                break
+            elif user_input.lower() == 'bulk':
+                file_path = input("Enter the path to the .txt file: ")
+                parse_urls(file_path)
+            else:
+                set_posters(user_input, tv, movies)
