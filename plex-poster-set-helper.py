@@ -85,7 +85,7 @@ def parse_string_to_dict(input_string):
     json_start_index = input_string.find('{')
     json_end_index = input_string.rfind('}')
     json_data = input_string[json_start_index:json_end_index+1]
-
+    
     parsed_dict = json.loads(json_data)
     return parsed_dict
 
@@ -124,26 +124,26 @@ def upload_tv_poster(poster, tv):
         try:
             if poster["season"] == "Cover":
                 upload_target = tv_show
-                print(f"Uploaded cover art for {poster['title']} - {poster['season']}.")
+                print("Uploaded cover art for {} - {}.".format(poster['title'], poster['season']))
             elif poster["season"] == 0:
                 upload_target = tv_show.season("Specials")
-                print(f"Uploaded art for {poster['title']} - Specials.")
+                print("Uploaded art for {} - Specials.".format(poster['title']))
             elif poster["season"] == "Backdrop":
                 upload_target = tv_show
-                print(f"Uploaded background art for {poster['title']}.")
+                print("Uploaded background art for {}.".format(poster['title']))
             elif poster["season"] >= 1:
                 if poster["episode"] == "Cover":
                     upload_target = tv_show.season(poster["season"])
-                    print(f"Uploaded art for {poster['title']} - Season {poster['season']}.")
+                    print("Uploaded art for {} - Season {}.".format(poster['title'], poster['season']))
                 elif poster["episode"] is None:
                     upload_target = tv_show.season(poster["season"])
-                    print(f"Uploaded art for {poster['title']} - Season {poster['season']}.")
+                    print("Uploaded art for {} - Season {}.".format(poster['title'], poster['season']))
                 elif poster["episode"] is not None:
                     try:
                         upload_target = tv_show.season(poster["season"]).episode(poster["episode"])
-                        print(f"Uploaded art for {poster['title']} - Season {poster['season']} Episode {poster['episode']}.")
+                        print("Uploaded art for {} - Season {} Episode {}.".format(poster['title'], poster['season'], poster['episode']))
                     except:
-                        print(f"{poster['title']} - {poster['season']} Episode {poster['episode']} not found, skipping.")
+                        print("{} - Season {} Episode {} not found, skipping.".format(poster['title'], poster['season'], poster['episode']))
             if poster["season"] == "Backdrop":
                 upload_target.uploadArt(url=poster['url'])
             else:
