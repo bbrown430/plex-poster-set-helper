@@ -79,7 +79,9 @@ def title_cleaner(string):
 
 
 def parse_string_to_dict(input_string):
+    input_string = input_string.replace('\\\\\\\"', "")
     input_string = input_string.replace("\\","")
+    input_string = input_string.replace("\'", "")
     input_string = input_string.replace("u0026", "&")
 
     json_start_index = input_string.find('{')
