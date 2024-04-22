@@ -286,7 +286,7 @@ def scrape_mediux(soup):
         
     for script in scripts:
         if 'files' in script.text:
-            if 'title' in script.text:
+            if 'set' in script.text:
                 if 'Set Link\\' not in script.text:
                     data_dict = parse_string_to_dict(script.text)
                     poster_data = data_dict["set"]["files"]
