@@ -79,7 +79,9 @@ def title_cleaner(string):
 
 
 def parse_string_to_dict(input_string):
+    input_string = input_string.replace('\\\\\\\"', "")
     input_string = input_string.replace("\\","")
+    input_string = input_string.replace("\'", "")
     input_string = input_string.replace("u0026", "&")
 
     json_start_index = input_string.find('{')
@@ -284,7 +286,7 @@ def scrape_mediux(soup):
         
     for script in scripts:
         if 'files' in script.text:
-            if 'title' in script.text:
+            if 'set' in script.text:
                 if 'Set Link\\' not in script.text:
                     data_dict = parse_string_to_dict(script.text)
                     poster_data = data_dict["set"]["files"]
