@@ -71,8 +71,10 @@ def title_cleaner(string):
     elif " -" in string:
         title = string.split(" -")[0]
     else:
-        title = string.strip()
-    
+        title = string
+
+    title = title.strip()
+
     return title
 
 def parse_string_to_dict(input_string):
