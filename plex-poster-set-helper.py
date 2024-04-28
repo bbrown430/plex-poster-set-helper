@@ -71,23 +71,22 @@ def title_cleaner(string):
     elif " -" in string:
         title = string.split(" -")[0]
     else:
-        title = string
-    
-    title = title.strip()
+        title = string.strip()
     
     return title
 
-
 def parse_string_to_dict(input_string):
+    # Remove unnecessary replacements
     input_string = input_string.replace('\\\\\\\"', "")
     input_string = input_string.replace("\\","")
-    input_string = input_string.replace("\'", "")
     input_string = input_string.replace("u0026", "&")
 
+    # Find JSON data in the input string
     json_start_index = input_string.find('{')
     json_end_index = input_string.rfind('}')
     json_data = input_string[json_start_index:json_end_index+1]
 
+    # Parse JSON data into a dictionary
     parsed_dict = json.loads(json_data)
     return parsed_dict
 
