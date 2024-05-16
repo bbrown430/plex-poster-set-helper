@@ -74,5 +74,30 @@ def test_scrape_mediux_set_tv_series_long():
     assert episode_count == 250
     assert cover_count == 13
 
+def test_scrape_mediux_boxset():
+    soup = plex_poster_set_helper.cook_soup("https://mediux.pro/sets/9406")
+    movieposters, showposters, collectionposters = plex_poster_set_helper.scrape_mediux(soup)
+    assert len(movieposters) == 0
+    assert len(collectionposters) == 0
+    assert len(showposters) == 231
+    backdrop_count = 0
+    episode_count = 0
+    cover_count = 0
+    for showposter in showposters:
+        assert showposter["title"] == "Doctor Who"
+        assert showposter["year"] == 2005
+        assert showposter["source"] == "mediux"
+        if (isinstance(showposter["episode"], int)):
+            episode_count+=1
+        elif showposter["episode"] == "Cover":
+            cover_count+=1
+        elif showposter["season"] == "Cover":
+            cover_count+=1
+        elif showposter["season"] == "Backdrop":
+            backdrop_count+=1
+    assert backdrop_count == 0
+    assert episode_count == 216
+    assert cover_count == 15
+
         
 test_scrape_mediux_set_tv_series()
