@@ -178,12 +178,20 @@ def upload_collection_poster(poster, movies):
 def set_posters(url, tv, movies):
     movieposters, showposters, collectionposters = scrape(url)
     
-    for lib in tv:
-        for poster in collectionposters:
-            upload_collection_poster(poster, [lib])
+    for poster in collectionposters:
+        upload_collection_poster(poster, movies)
         
-        for poster in movieposters:
-            upload_movie_poster(poster, [lib])
+    for poster in movieposters:
+        upload_movie_poster(poster, movies)
+    
+    for poster in showposters:
+        upload_tv_poster(poster, tv)
+    
+    # multi-library requires more debugging
+    """
+    for lib in tv:
+        #for poster in collectionposters:
+            #upload_collection_poster(poster, [lib])
         
         for poster in showposters:
             upload_tv_poster(poster, [lib])
@@ -194,9 +202,7 @@ def set_posters(url, tv, movies):
         
         for poster in movieposters:
             upload_movie_poster(poster, [lib])
-        
-        for poster in showposters:
-            upload_tv_poster(poster, [lib])
+    """
 
 
 def scrape_posterdb(soup):

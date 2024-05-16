@@ -16,7 +16,7 @@ plex-poster-set-helper is a tool to help upload sets of posters from ThePosterDB
 pip install -r requirements.txt
 ```
 
-5. Rename `exampleconfig.json` to `config.json`, and populate with the proper information
+5. Rename `example_config.json` to `config.json`, and populate with the proper information
    - "base_url"
         - the IP and port of your plex server. (e.g. "http://12.345.67.890:32400/"
    - "token"
@@ -31,9 +31,9 @@ pip install -r requirements.txt
 
 ## Usage
 
-Run `plex-poster-set-helper.py`
+Run `plex_poster_set_helper.py`
 
-## Modes
+## Supported Features
 ### Multiple Libraries
 
 To utilize multiple libraries, update the `config.json` as follows:
@@ -45,7 +45,29 @@ To utilize multiple libraries, update the `config.json` as follows:
 
 To clarify, use the names of your own libraries, those are just placeholders. Currently, this does not account for the same media being in both libraries. If the same media is included in both libraries, the poster will only be replaced for the topmost library in that list.
 
+### Mediux Filters
+
+To utilize Mediux filters, modify the `config.json` as follows:
+
+- `show_cover`: will replace the show cover
+- `background`: will replace backgrounds
+- `season_cover`: will replace season covers
+- `title_card`: will replace episode title cards
+
+Including any of these flags in the `config.json` will have the script *replace* those media types.
+
+```bash
+"mediux_filters": ["title_card", "background", "season_cover", "show_cover"]
+```
+
 ### Bulk Import
 
 1. Enter `bulk` in the first input prompt
-2. Enter the path to a .txt file with multiple links (on separate lines)
+2. Enter the path to a .txt file (reference example_bulk_import)
+
+### Using args
+Command line arguments are supported.
+
+1. Passing a single link e.g.`plex_poster_set_helper.py https://mediux.pro/sets/9242`
+
+2. Passing a bulk import file e.g. `plex_poster_set_helper.py bulk example_bulk_import.txt`
