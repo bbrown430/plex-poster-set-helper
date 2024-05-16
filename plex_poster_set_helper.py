@@ -272,14 +272,11 @@ def scrape_posterdb(soup):
 
 
 def get_mediux_filters():
-
     config = json.load(open("config.json"))
-
     return config.get("mediux_filters", None)
 
 
 def check_mediux_filter(mediux_filters, filter):
-
     return filter in mediux_filters if mediux_filters else True
 
 
