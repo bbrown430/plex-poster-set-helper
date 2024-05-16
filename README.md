@@ -28,6 +28,12 @@ pip install -r requirements.txt
     - "movie_library"
         - the name of your Movies library (e.g. "Movies")
         - multiple libraries are also supported, check the `Multiple Libraries` section of the README
+    - "mediux_filters"
+        - including any of these flags will have the script *upload* those media types.
+          - `show_cover`
+          - `background`
+          - `season_cover`
+          - `title_card`
 
 ## Usage
 
@@ -44,21 +50,6 @@ To utilize multiple libraries, update the `config.json` as follows:
 ```
 
 To clarify, use the names of your own libraries, those are just placeholders. Currently, this does not account for the same media being in both libraries. If the same media is included in both libraries, the poster will only be replaced for the topmost library in that list.
-
-### Mediux Filters
-
-To utilize Mediux filters, modify the `config.json` as follows:
-
-- `show_cover`: will replace the show cover
-- `background`: will replace backgrounds
-- `season_cover`: will replace season covers
-- `title_card`: will replace episode title cards
-
-Including any of these flags in the `config.json` will have the script *replace* those media types.
-
-```bash
-"mediux_filters": ["title_card", "background", "season_cover", "show_cover"]
-```
 
 ### Bulk Import
 
