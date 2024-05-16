@@ -72,22 +72,23 @@ def title_cleaner(string):
         title = string.split(" -")[0]
     else:
         title = string
-    
+
     title = title.strip()
-    
+
     return title
 
-
 def parse_string_to_dict(input_string):
+    # Remove unnecessary replacements
     input_string = input_string.replace('\\\\\\\"', "")
     input_string = input_string.replace("\\","")
-    input_string = input_string.replace("\'", "")
     input_string = input_string.replace("u0026", "&")
 
+    # Find JSON data in the input string
     json_start_index = input_string.find('{')
     json_end_index = input_string.rfind('}')
     json_data = input_string[json_start_index:json_end_index+1]
 
+    # Parse JSON data into a dictionary
     parsed_dict = json.loads(json_data)
     return parsed_dict
 
@@ -177,14 +178,25 @@ def upload_collection_poster(poster, movies):
 def set_posters(url, tv, movies):
     movieposters, showposters, collectionposters = scrape(url)
     
-    for poster in collectionposters:
-        upload_collection_poster(poster, movies)
+    for lib in tv:
+        for poster in collectionposters:
+            upload_collection_poster(poster, [lib])
         
-    for poster in movieposters:
-        upload_movie_poster(poster, movies)
+        for poster in movieposters:
+            upload_movie_poster(poster, [lib])
         
-    for poster in showposters:
-        upload_tv_poster(poster, tv)
+        for poster in showposters:
+            upload_tv_poster(poster, [lib])
+
+    for lib in movies:
+        for poster in collectionposters:
+            upload_collection_poster(poster, [lib])
+        
+        for poster in movieposters:
+            upload_movie_poster(poster, [lib])
+        
+        for poster in showposters:
+            upload_tv_poster(poster, [lib])
 
 
 def scrape_posterdb(soup):
