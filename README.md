@@ -18,7 +18,7 @@ pip install -r requirements.txt
 
 5. Rename `example_config.json` to `config.json`, and populate with the proper information
    - "base_url"
-        - the IP and port of your plex server. (e.g. "http://12.345.67.890:32400/"
+        - the IP and port of your plex server. e.g. "http://12.345.67.890:32400/"
    - "token"
         - your Plex token
         - **NOTE: this can be found [here](https://support.plex.tv/articles/204059436-finding-an-authentication-token-x-plex-token/)**
