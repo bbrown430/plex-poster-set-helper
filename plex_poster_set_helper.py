@@ -204,6 +204,12 @@ def set_posters(url, tv, movies):
             upload_movie_poster(poster, [lib])
     """
 
+def scrape_posterdb_set_link(soup):
+    try:
+        view_all_div = soup.find('a', class_='rounded view_all')['href']
+    except:
+        return None
+    return view_all_div
 
 def scrape_posterdb(soup):
     movieposters = []
@@ -396,9 +402,19 @@ def scrape_mediux(soup):
 
 
 def scrape(url):
-    if ("theposterdb.com" in url) and ("set" in url or "user" in url):
-        soup = cook_soup(url)
-        return scrape_posterdb(soup)
+    if ("theposterdb.com" in url):
+        if("set" in url or "user" in url):
+            soup = cook_soup(url)
+            return scrape_posterdb(soup)
+        elif("/poster/" in url):
+            soup = cook_soup(url)
+            set_url = scrape_posterdb_set_link(soup)
+            if set_url is not None:
+                set_soup = cook_soup(set_url)
+                return scrape_posterdb(set_soup)
+            else:
+                sys.exit("Poster set not found. Check the link you are inputting.")
+            #menu_selection = input("You've provided the link to a single poster, rather than a set. \n \t 1. Upload entire set\n \t 2. Upload single poster \nType your selection: ")
     elif ("mediux.pro" in url) and ("sets" in url):
         soup = cook_soup(url)
         return scrape_mediux(soup)
