@@ -52,9 +52,9 @@ def plex_setup():
 
 
 def cook_soup(url):  
-    headers = {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
-    }
+    headers = { 
+               'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36', 'Sec-Ch-Ua-Mobile': '?0', 'Sec-Ch-Ua-Platform': 'Windows' 
+            }
 
     response = requests.get(url, headers=headers)
 
@@ -418,6 +418,11 @@ def scrape(url):
     elif ("mediux.pro" in url) and ("sets" in url):
         soup = cook_soup(url)
         return scrape_mediux(soup)
+    elif (".html" in url):
+        with open(url, 'r', encoding='utf-8') as file:
+            html_content = file.read()
+        soup = BeautifulSoup(html_content, 'html.parser')
+        return scrape_posterdb(soup)
     else:
         sys.exit("Poster set not found. Check the link you are inputting.")
 
