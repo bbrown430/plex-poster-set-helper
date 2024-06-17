@@ -79,7 +79,7 @@ def test_scrape_mediux_boxset():
     movieposters, showposters, collectionposters = plex_poster_set_helper.scrape_mediux(soup)
     assert len(movieposters) == 0
     assert len(collectionposters) == 0
-    assert len(showposters) == 231
+    assert len(showposters) == 247
     backdrop_count = 0
     episode_count = 0
     cover_count = 0
