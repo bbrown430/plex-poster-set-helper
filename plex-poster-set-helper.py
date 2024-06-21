@@ -53,7 +53,7 @@ def plex_setup():
 
 def cook_soup(url):  
     headers = {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36', 'Sec-Ch-Ua-Mobile': '?0', 'Sec-Ch-Ua-Platform': 'Windows'
     }
 
     response = requests.get(url, headers=headers)
@@ -187,13 +187,25 @@ def set_posters(url, tv, movies):
         upload_tv_poster(poster, tv)
 
 
-def scrape_posterdb(soup):
+def scrape_posterdb_set_link(soup):
+    try:
+        view_all_div = soup.find('a', class_='rounded view_all')['href']
+    except:
+        return None
+    return view_all_div
+
+
+def scrape_posterdb_page(soup):
     movieposters = []
     showposters = []
     collectionposters = []
     
     # find the poster grid
     poster_div = soup.find('div', class_='row d-flex flex-wrap m-0 w-100 mx-n1 mt-n1')
+    
+    # when the last page has no posters
+    if poster_div == None:
+        return movieposters, showposters, collectionposters
 
     # find all poster divs
     posters = poster_div.find_all('div', class_='col-6 col-lg-2 p-1')
@@ -257,6 +269,29 @@ def scrape_posterdb(soup):
             collectionposters.append(collectionposter)
     
     return movieposters, showposters, collectionposters
+
+
+def scrape_posterdb(url):
+    all_movieposters = []
+    all_showposters = []
+    all_collectionposters = []
+
+    page = 1
+    while True:
+        paginated_url = f"{url}?page={page}"
+        soup = cook_soup(paginated_url)
+        movieposters, showposters, collectionposters = scrape_posterdb_page(soup)
+
+        if not movieposters and not showposters and not collectionposters:
+            break
+
+        all_movieposters.extend(movieposters)
+        all_showposters.extend(showposters)
+        all_collectionposters.extend(collectionposters)
+
+        page += 1
+
+    return all_movieposters, all_showposters, all_collectionposters
 
 
 def get_mediux_filters():
@@ -382,8 +417,7 @@ def scrape_mediux(soup):
 
 def scrape(url):
     if ("theposterdb.com" in url) and ("set" in url or "user" in url):
-        soup = cook_soup(url)
-        return scrape_posterdb(soup)
+        return scrape_posterdb(url)
     elif ("mediux.pro" in url) and ("sets" in url):
         soup = cook_soup(url)
         return scrape_mediux(soup)
