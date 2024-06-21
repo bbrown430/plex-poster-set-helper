@@ -347,9 +347,12 @@ def scrape_mediux(soup):
                 year = None
 
             if data["fileType"] == "title_card":
-                episode_id = data["episode_id"]["id"]
+                episode_id = data["episode_id"]["id"] 
                 season = data["episode_id"]["season_id"]["season_number"]
                 season_data = [episode for episode in episodes if episode["season_number"] == season][0]
+                # checks if season has no episodes in list like https://mediux.pro/sets/15931
+                if not season_data["episodes"]:
+                    continue
                 episode_data = [episode for episode in season_data["episodes"] if episode["id"] == episode_id][0]
                 episode = episode_data["episode_number"]
                 file_type = "title_card"
