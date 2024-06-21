@@ -1,5 +1,6 @@
 import requests
 import sys
+import io
 import os.path
 import json
 from bs4 import BeautifulSoup
@@ -7,6 +8,9 @@ from plexapi.server import PlexServer
 import plexapi.exceptions
 import time
 import re
+
+# Set stdout to utf-8 encoding
+sys.stdout = io.TextIOWrapper(sys.stdout.detach(), encoding='utf-8')
 
 def plex_setup():
     if os.path.exists("config.json"):
