@@ -59,7 +59,7 @@ def cook_soup(url):
     headers = {
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36', 'Sec-Ch-Ua-Mobile': '?0', 'Sec-Ch-Ua-Platform': 'Windows'
     }
-
+         
     response = requests.get(url, headers=headers)
 
     if response.status_code == 200 or (response.status_code == 500 and "mediux.pro" in url):
@@ -76,22 +76,23 @@ def title_cleaner(string):
         title = string.split(" -")[0]
     else:
         title = string
-    
+
     title = title.strip()
-    
+
     return title
 
-
 def parse_string_to_dict(input_string):
+    # Remove unnecessary replacements
     input_string = input_string.replace('\\\\\\\"', "")
     input_string = input_string.replace("\\","")
-    input_string = input_string.replace("\'", "")
     input_string = input_string.replace("u0026", "&")
 
+    # Find JSON data in the input string
     json_start_index = input_string.find('{')
     json_end_index = input_string.rfind('}')
     json_data = input_string[json_start_index:json_end_index+1]
 
+    # Parse JSON data into a dictionary
     parsed_dict = json.loads(json_data)
     return parsed_dict
 
@@ -186,10 +187,33 @@ def set_posters(url, tv, movies):
         
     for poster in movieposters:
         upload_movie_poster(poster, movies)
-        
+    
     for poster in showposters:
         upload_tv_poster(poster, tv)
+    
+    # multi-library requires more debugging
+    """
+    for lib in tv:
+        #for poster in collectionposters:
+            #upload_collection_poster(poster, [lib])
+        
+        for poster in showposters:
+            upload_tv_poster(poster, [lib])
 
+    for lib in movies:
+        for poster in collectionposters:
+            upload_collection_poster(poster, [lib])
+        
+        for poster in movieposters:
+            upload_movie_poster(poster, [lib])
+    """
+
+def scrape_posterdb_set_link(soup):
+    try:
+        view_all_div = soup.find('a', class_='rounded view_all')['href']
+    except:
+        return None
+    return view_all_div
 
 def scrape_posterdb_set_link(soup):
     try:
@@ -299,14 +323,11 @@ def scrape_posterdb(url):
 
 
 def get_mediux_filters():
-
     config = json.load(open("config.json"))
-
     return config.get("mediux_filters", None)
 
 
 def check_mediux_filter(mediux_filters, filter):
-
     return filter in mediux_filters if mediux_filters else True
 
 
@@ -423,11 +444,27 @@ def scrape_mediux(soup):
 
 
 def scrape(url):
-    if ("theposterdb.com" in url) and ("set" in url or "user" in url):
-        return scrape_posterdb(url)
+    if ("theposterdb.com" in url):
+        if("set" in url or "user" in url):
+            soup = cook_soup(url)
+            return scrape_posterdb(soup)
+        elif("/poster/" in url):
+            soup = cook_soup(url)
+            set_url = scrape_posterdb_set_link(soup)
+            if set_url is not None:
+                set_soup = cook_soup(set_url)
+                return scrape_posterdb(set_soup)
+            else:
+                sys.exit("Poster set not found. Check the link you are inputting.")
+            #menu_selection = input("You've provided the link to a single poster, rather than a set. \n \t 1. Upload entire set\n \t 2. Upload single poster \nType your selection: ")
     elif ("mediux.pro" in url) and ("sets" in url):
         soup = cook_soup(url)
         return scrape_mediux(soup)
+    elif (".html" in url):
+        with open(url, 'r', encoding='utf-8') as file:
+            html_content = file.read()
+        soup = BeautifulSoup(html_content, 'html.parser')
+        return scrape_posterdb(soup)
     else:
         sys.exit("Poster set not found. Check the link you are inputting.")
 

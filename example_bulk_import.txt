@@ -1,0 +1,13 @@
+# Shows
+// Mr. & Mrs. Smith
+https://mediux.pro/sets/9242
+// Star Wars: Andor
+https://mediux.pro/sets/7720
+
+# Movie Collections
+// The Dark Knight Collection
+https://theposterdb.com/set/13035
+
+# NOTE: all of the commenting is completely unnecessary. 
+# A .txt file with just URLs on separate lines will do just fine.
+# This is just to show that you CAN comment with "#" and "//" if you desire!

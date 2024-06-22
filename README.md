@@ -16,9 +16,9 @@ plex-poster-set-helper is a tool to help upload sets of posters from ThePosterDB
 pip install -r requirements.txt
 ```
 
-5. Rename `exampleconfig.json` to `config.json`, and populate with the proper information
+5. Rename `example_config.json` to `config.json`, and populate with the proper information
    - "base_url"
-        - the IP and port of your plex server. (e.g. "http://12.345.67.890:32400/"
+        - the IP and port of your plex server. e.g. "http://12.345.67.890:32400/"
    - "token"
         - your Plex token
         - **NOTE: this can be found [here](https://support.plex.tv/articles/204059436-finding-an-authentication-token-x-plex-token/)**
@@ -28,12 +28,18 @@ pip install -r requirements.txt
     - "movie_library"
         - the name of your Movies library (e.g. "Movies")
         - multiple libraries are also supported, check the `Multiple Libraries` section of the README
+    - "mediux_filters"
+        - including any of these flags will have the script *upload* those media types.
+          - `show_cover`
+          - `background`
+          - `season_cover`
+          - `title_card`
 
 ## Usage
 
-Run `plex-poster-set-helper.py`
+Run `plex_poster_set_helper.py`
 
-## Modes
+## Supported Features
 ### Multiple Libraries
 
 To utilize multiple libraries, update the `config.json` as follows:
@@ -48,4 +54,11 @@ To clarify, use the names of your own libraries, those are just placeholders. Cu
 ### Bulk Import
 
 1. Enter `bulk` in the first input prompt
-2. Enter the path to a .txt file with multiple links (on separate lines)
+2. Enter the path to a .txt file (reference example_bulk_import)
+
+### Using args
+Command line arguments are supported.
+
+1. Passing a single link e.g.`plex_poster_set_helper.py https://mediux.pro/sets/9242`
+
+2. Passing a bulk import file e.g. `plex_poster_set_helper.py bulk example_bulk_import.txt`
