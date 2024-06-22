@@ -1,5 +1,6 @@
 import requests
 import sys
+import io
 import os.path
 import json
 from bs4 import BeautifulSoup
@@ -7,6 +8,9 @@ from plexapi.server import PlexServer
 import plexapi.exceptions
 import time
 import re
+
+# Set stdout to utf-8 encoding
+sys.stdout = io.TextIOWrapper(sys.stdout.detach(), encoding='utf-8')
 
 def plex_setup():
     if os.path.exists("config.json"):
@@ -52,10 +56,10 @@ def plex_setup():
 
 
 def cook_soup(url):  
-    headers = { 
-               'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36', 'Sec-Ch-Ua-Mobile': '?0', 'Sec-Ch-Ua-Platform': 'Windows' 
-            }
-
+    headers = {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36', 'Sec-Ch-Ua-Mobile': '?0', 'Sec-Ch-Ua-Platform': 'Windows'
+    }
+         
     response = requests.get(url, headers=headers)
 
     if response.status_code == 200 or (response.status_code == 500 and "mediux.pro" in url):
@@ -211,13 +215,25 @@ def scrape_posterdb_set_link(soup):
         return None
     return view_all_div
 
-def scrape_posterdb(soup):
+def scrape_posterdb_set_link(soup):
+    try:
+        view_all_div = soup.find('a', class_='rounded view_all')['href']
+    except:
+        return None
+    return view_all_div
+
+
+def scrape_posterdb_page(soup):
     movieposters = []
     showposters = []
     collectionposters = []
     
     # find the poster grid
     poster_div = soup.find('div', class_='row d-flex flex-wrap m-0 w-100 mx-n1 mt-n1')
+    
+    # when the last page has no posters
+    if poster_div == None:
+        return movieposters, showposters, collectionposters
 
     # find all poster divs
     posters = poster_div.find_all('div', class_='col-6 col-lg-2 p-1')
@@ -283,6 +299,29 @@ def scrape_posterdb(soup):
     return movieposters, showposters, collectionposters
 
 
+def scrape_posterdb(url):
+    all_movieposters = []
+    all_showposters = []
+    all_collectionposters = []
+
+    page = 1
+    while True:
+        paginated_url = f"{url}?page={page}"
+        soup = cook_soup(paginated_url)
+        movieposters, showposters, collectionposters = scrape_posterdb_page(soup)
+
+        if not movieposters and not showposters and not collectionposters:
+            break
+
+        all_movieposters.extend(movieposters)
+        all_showposters.extend(showposters)
+        all_collectionposters.extend(collectionposters)
+
+        page += 1
+
+    return all_movieposters, all_showposters, all_collectionposters
+
+
 def get_mediux_filters():
     config = json.load(open("config.json"))
     return config.get("mediux_filters", None)
@@ -329,9 +368,12 @@ def scrape_mediux(soup):
                 year = None
 
             if data["fileType"] == "title_card":
-                episode_id = data["episode_id"]["id"]
+                episode_id = data["episode_id"]["id"] 
                 season = data["episode_id"]["season_id"]["season_number"]
                 season_data = [episode for episode in episodes if episode["season_number"] == season][0]
+                # checks if season has no episodes in list like https://mediux.pro/sets/15931
+                if not season_data["episodes"]:
+                    continue
                 episode_data = [episode for episode in season_data["episodes"] if episode["id"] == episode_id][0]
                 episode = episode_data["episode_number"]
                 file_type = "title_card"
