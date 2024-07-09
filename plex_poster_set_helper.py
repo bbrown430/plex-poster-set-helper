@@ -92,91 +92,115 @@ def parse_string_to_dict(input_string):
     parsed_dict = json.loads(json_data)
     return parsed_dict
 
-
 def find_in_library(library, poster):
+    items = []
     for lib in library:
         try:
             if poster["year"] is not None:
                 library_item = lib.get(poster["title"], year=poster["year"])
             else:
                 library_item = lib.get(poster["title"])
-            return library_item
+            
+            if library_item:
+                items.append(library_item)
         except:
             pass
+    
+    if items:
+        return items
+    
     print(f"{poster['title']} not found, skipping.")
     return None
 
-
 def find_collection(library, poster):
-    found = False
+    collections = []
     for lib in library:
         try:
             movie_collections = lib.collections()
+            for plex_collection in movie_collections:
+                if plex_collection.title == poster["title"]:
+                    collections.append(plex_collection)
         except:
             pass
-        for plex_collection in movie_collections:
-            if plex_collection.title == poster["title"]:
-                return plex_collection
-    if not found:   
-        print(f"{poster['title']} not found in Plex library.")
+
+    if collections:
+        return collections
+
+    print(f"{poster['title']} collection not found, skipping.")
+    return None
+
         
 
 def upload_tv_poster(poster, tv):
-    tv_show = find_in_library(tv, poster)
-    if tv_show is not None:
-        try:
-            if poster["season"] == "Cover":
-                upload_target = tv_show
-                print(f"Uploaded cover art for {poster['title']} - {poster['season']}.")
-            elif poster["season"] == 0:
-                upload_target = tv_show.season("Specials")
-                print(f"Uploaded art for {poster['title']} - Specials.")
-            elif poster["season"] == "Backdrop":
-                upload_target = tv_show
-                print(f"Uploaded background art for {poster['title']}.")
-            elif poster["season"] >= 1:
-                if poster["episode"] == "Cover":
-                    upload_target = tv_show.season(poster["season"])
-                    print(f"Uploaded art for {poster['title']} - Season {poster['season']}.")
-                elif poster["episode"] is None:
-                    upload_target = tv_show.season(poster["season"])
-                    print(f"Uploaded art for {poster['title']} - Season {poster['season']}.")
-                elif poster["episode"] is not None:
-                    try:
-                        upload_target = tv_show.season(poster["season"]).episode(poster["episode"])
-                        print(f"Uploaded art for {poster['title']} - Season {poster['season']} Episode {poster['episode']}.")
-                    except:
-                        print(f"{poster['title']} - {poster['season']} Episode {poster['episode']} not found, skipping.")
-            if poster["season"] == "Backdrop":
-                upload_target.uploadArt(url=poster['url'])
-            else:
-                upload_target.uploadPoster(url=poster['url'])
-            if poster["source"] == "posterdb":
-                time.sleep(6) # too many requests prevention
-        except:
-            print(f"{poster['title']} - Season {poster['season']} not found, skipping.")
+    tv_show_items = find_in_library(tv, poster)
+    if tv_show_items:
+        for tv_show in tv_show_items:
+            try:
+                if poster["season"] == "Cover":
+                    upload_target = tv_show
+                    print(f"Uploaded cover art for {poster['title']} - {poster['season']}.")
+                elif poster["season"] == 0:
+                    upload_target = tv_show.season("Specials")
+                    print(f"Uploaded art for {poster['title']} - Specials.")
+                elif poster["season"] == "Backdrop":
+                    upload_target = tv_show
+                    print(f"Uploaded background art for {poster['title']}.")
+                elif poster["season"] >= 1:
+                    if poster["episode"] == "Cover":
+                        upload_target = tv_show.season(poster["season"])
+                        print(f"Uploaded art for {poster['title']} - Season {poster['season']}.")
+                    elif poster["episode"] is None:
+                        upload_target = tv_show.season(poster["season"])
+                        print(f"Uploaded art for {poster['title']} - Season {poster['season']}.")
+                    elif poster["episode"] is not None:
+                        try:
+                            upload_target = tv_show.season(poster["season"]).episode(poster["episode"])
+                            print(f"Uploaded art for {poster['title']} - Season {poster['season']} Episode {poster['episode']}.")
+                        except:
+                            print(f"{poster['title']} - {poster['season']} Episode {poster['episode']} not found, skipping.")
+                if poster["season"] == "Backdrop":
+                    upload_target.uploadArt(url=poster['url'])
+                else:
+                    upload_target.uploadPoster(url=poster['url'])
+                if poster["source"] == "posterdb":
+                    time.sleep(6)  # too many requests prevention
+            except:
+                print(f"{poster['title']} - Season {poster['season']} not found, skipping.")
+    else:
+        print(f"{poster['title']} not found in any library.")
 
 
 def upload_movie_poster(poster, movies):
-    movie = find_in_library(movies, poster)
-    if movie is not None:
-        movie.uploadPoster(poster["url"])
-        print(f'Uploaded art for {poster["title"]}.')
-        if poster["source"] == "posterdb":
-            time.sleep(6) # too many requests prevention
+    movie_items = find_in_library(movies, poster)
+    if movie_items:
+        for movie_item in movie_items:
+            movie_item.uploadPoster(poster["url"])
+            print(f'Uploaded art for {poster["title"]} to library {movie_item.librarySectionID}.')  # Debug output
+            if poster["source"] == "posterdb":
+                time.sleep(6)  # too many requests prevention
+    else:
+        print(f'{poster["title"]} not found in any library.')
 
 
 def upload_collection_poster(poster, movies):
-    collection = find_collection(movies, poster)
-    if collection is not None:
-        collection.uploadPoster(poster["url"])
-        print(f'Uploaded art for {poster["title"]}.')
-        if poster["source"] == "posterdb":
-                time.sleep(6) # too many requests prevention
+    collection_items = find_collection(movies, poster)
+    if collection_items:
+        for collection in collection_items:
+            collection.uploadPoster(poster["url"])
+            print(f'Uploaded art for {poster["title"]} to collection {collection.title}.')  # Debug output
+            if poster["source"] == "posterdb":
+                time.sleep(6)  # too many requests prevention
+    else:
+        print(f'{poster["title"]} collection not found in any library.')
+
 
 
 def set_posters(url, tv, movies):
     movieposters, showposters, collectionposters = scrape(url)
+    # print(f"Scraped movie posters: {movieposters}")  # Debug output
+    # print(f"Scraped show posters: {showposters}")  # Debug output
+    # print(f"Scraped collection posters: {collectionposters}")  # Debug output
+
     
     for poster in collectionposters:
         upload_collection_poster(poster, movies)
