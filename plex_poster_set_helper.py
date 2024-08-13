@@ -447,6 +447,8 @@ def parse_urls(file_path):
 
 
 if __name__ == "__main__":
+    # Set stdout encoding to UTF-8
+    sys.stdout.reconfigure(encoding='utf-8')
     tv, movies = plex_setup()
     
     # arguments were provided
