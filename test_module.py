@@ -96,7 +96,7 @@ def test_scrape_mediux_boxset():
         elif showposter["season"] == "Backdrop":
             backdrop_count+=1
     assert backdrop_count == 0
-    assert episode_count == 216
+    assert episode_count == 232
     assert cover_count == 15
 
         

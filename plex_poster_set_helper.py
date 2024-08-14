@@ -1,4 +1,5 @@
 import requests
+import math
 import sys
 import os.path
 import json
@@ -76,6 +77,7 @@ def title_cleaner(string):
     title = title.strip()
 
     return title
+
 
 def parse_string_to_dict(input_string):
     # Remove unnecessary replacements
@@ -211,6 +213,18 @@ def scrape_posterdb_set_link(soup):
         return None
     return view_all_div
 
+
+def scrape_posterd_user_info(soup):
+    try:
+        span_tag = soup.find('span', class_='numCount')
+        number_str = span_tag['data-count']
+        
+        upload_count = int(number_str)
+        pages = math.ceil(upload_count/24)
+        return pages
+    except:
+        return None
+
 def scrape_posterdb(soup):
     movieposters = []
     showposters = []
@@ -241,10 +255,10 @@ def scrape_posterdb(soup):
                 year = None
                 
             if " - " in title_p:
-                split_season = title_p.split(" - ")[1]
+                split_season = title_p.split(" - ")[-1]
                 if split_season == "Specials":
                     season = 0
-                else:
+                elif "Season" in split_season:
                     season = int(split_season.split(" ")[1])
             else:
                 season = "Cover"
@@ -444,7 +458,19 @@ def parse_urls(file_path):
                 set_posters(url, tv, movies)
     except FileNotFoundError:
         print("File not found. Please enter a valid file path.")
-
+    
+def scrape_entire_user(url):
+    soup = cook_soup(url)
+    pages = scrape_posterd_user_info(soup)
+    
+    if "?" in url:
+        cleaned_url = url.split("?")[0]
+        url = cleaned_url
+        
+    for page in range(pages):
+        print(f"Scraping page {page+1}.")
+        page_url = f"{url}?page={page+1}"
+        # set_posters(page_url, tv, movies)
 
 if __name__ == "__main__":
     # Set stdout encoding to UTF-8
@@ -464,6 +490,7 @@ if __name__ == "__main__":
         # a single url was provided
         else:
             set_posters(command, tv, movies)
+            
     # user input
     else:
         while True:
@@ -475,5 +502,7 @@ if __name__ == "__main__":
             elif user_input.lower() == 'bulk':
                 file_path = input("Enter the path to the .txt file: ")
                 parse_urls(file_path)
+            elif "/user/" in user_input.lower():
+                scrape_entire_user(user_input)
             else:
                 set_posters(user_input, tv, movies)
