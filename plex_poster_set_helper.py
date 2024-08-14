@@ -417,7 +417,7 @@ def scrape_mediux(soup):
 
 def scrape(url):
     if ("theposterdb.com" in url):
-        if("set" in url or "user" in url):
+        if("/set/" in url or "/user/" in url):
             soup = cook_soup(url)
             return scrape_posterdb(soup)
         elif("/poster/" in url):
@@ -455,7 +455,10 @@ def parse_urls(file_path):
         for url in urls:
             url = url.strip()
             if is_not_comment(url):
-                set_posters(url, tv, movies)
+                if "/user/" in url:
+                    scrape_entire_user(url)
+                else:  
+                    set_posters(url, tv, movies)
     except FileNotFoundError:
         print("File not found. Please enter a valid file path.")
     
@@ -469,8 +472,8 @@ def scrape_entire_user(url):
         
     for page in range(pages):
         print(f"Scraping page {page+1}.")
-        page_url = f"{url}?page={page+1}"
-        # set_posters(page_url, tv, movies)
+        page_url = f"{url}?section=uploads&page={page+1}"
+        set_posters(page_url, tv, movies)
 
 if __name__ == "__main__":
     # Set stdout encoding to UTF-8
@@ -488,6 +491,8 @@ if __name__ == "__main__":
             else:
                 print("Please provide the path to the .txt file.")
         # a single url was provided
+        elif "/user/" in command:
+            scrape_entire_user(command)
         else:
             set_posters(command, tv, movies)
             
