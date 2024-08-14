@@ -49,7 +49,7 @@ To utilize multiple libraries, update the `config.json` as follows:
 "movie_library": ["Movies", "Kids Movies"]
 ```
 
-To clarify, use the names of your own libraries, those are just placeholders. Currently, this does not account for the same media being in both libraries. If the same media is included in both libraries, the poster will only be replaced for the topmost library in that list.
+To clarify, use the names of your own libraries, those are just placeholders. If the media is in both libraries, the posters will be replaced in both libraries. I intend on adding more specific selection filtering in the future.
 
 ### Bulk Import
 
