@@ -326,8 +326,8 @@ def scrape_mediux(soup):
     quality_suffix = "&w=3840&q=80"
     
     scripts = soup.find_all('script')
-    
 
+    poster_data = []
     media_type = None
     showposters = []
     movieposters = []
@@ -336,20 +336,40 @@ def scrape_mediux(soup):
         
     for script in scripts:
         if 'files' in script.text:
-            if 'set' in script.text:
+            if 'boxset' in script.text:
+                if 'Set Link\\' not in script.text:
+                    media_type="Boxset"
+                    data_dict = parse_string_to_dict(script.text)
+                    poster_data_sets = data_dict["boxset"]["sets"]
+                    for poster_data_set in poster_data_sets:
+                        boxset_item = {}
+                        if poster_data_set["movie"] is not None:
+                            boxset_item['title'] = poster_data_set['movie']['title']
+                            boxset_item['year'] = int(poster_data_set['movie']["release_date"][:4])
+                            boxset_item['id'] = poster_data_set["files"][0]["id"]
+                            boxset_item['submedia'] = "movie"
+                            poster_data.append(boxset_item)
+                        elif poster_data_set["show"] is not None:
+                            boxset_item['title'] = poster_data_set['show']['name']
+                            boxset_item['year'] = int(poster_data_set['set_name'][-9:-5])
+                            boxset_item['id'] = poster_data_set["files"][0]["id"]
+                            boxset_item['submedia'] = "show"
+                            poster_data.append(boxset_item)
+            elif 'set' in script.text:
                 if 'Set Link\\' not in script.text:
                     data_dict = parse_string_to_dict(script.text)
                     poster_data = data_dict["set"]["files"]              
 
     for data in poster_data:
-        if data["show_id"] is not None or data["show_id_backdrop"] is not None or data["episode_id"] is not None or data["season_id"] is not None or data["show_id"] is not None:
+        if media_type is not None:
+            pass
+        elif data["show_id"] is not None or data["show_id_backdrop"] is not None or data["episode_id"] is not None or data["season_id"] is not None or data["show_id"] is not None:
             media_type = "Show"
         else:
             media_type = "Movie"
                     
     for data in poster_data:        
         if media_type == "Show":
-
             episodes = data_dict["set"]["show"]["seasons"]
             show_name = data_dict["set"]["show"]["name"]
             try:
@@ -383,7 +403,6 @@ def scrape_mediux(soup):
                 file_type = "show_cover"
 
         elif media_type == "Movie":
-
             if data["movie_id"]:
                 if data_dict["set"]["movie"]:
                     title = data_dict["set"]["movie"]["title"]
@@ -429,6 +448,24 @@ def scrape_mediux(soup):
                 movieposter["url"] = poster_url
                 movieposter["source"] = "mediux"
                 movieposters.append(movieposter)
+        
+        elif media_type == "Boxset":
+                if data["submedia"] == "movie":
+                    movieposter = {}
+                    movieposter["title"] = data["title"]
+                    movieposter["year"] = data["year"]
+                    movieposter["url"] = poster_url
+                    movieposter["source"] = "mediux"
+                    movieposters.append(movieposter)
+                elif data["submedia"] == "show":
+                    showposter = {}
+                    showposter["title"] = data["title"]
+                    showposter["season"] = "Cover"
+                    showposter["episode"] = None
+                    showposter["year"] = data["year"]
+                    showposter["url"] = poster_url
+                    showposter["source"] = "mediux"
+                    showposters.append(showposter)
             
     return movieposters, showposters, collectionposters
 
@@ -454,7 +491,7 @@ def scrape(url):
         with open(url, 'r', encoding='utf-8') as file:
             html_content = file.read()
         soup = BeautifulSoup(html_content, 'html.parser')
-        return scrape_posterdb(soup)
+        return scrape_mediux(soup)
     else:
         sys.exit("Poster set not found. Check the link you are inputting.")
 
