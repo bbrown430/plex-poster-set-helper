@@ -327,7 +327,7 @@ def scrape_mediux(soup):
             if 'set' in script.text:
                 if 'Set Link\\' not in script.text:
                     data_dict = parse_string_to_dict(script.text)
-                    poster_data = data_dict["set"]["files"]
+                    poster_data = data_dict["set"]["files"]              
 
     for data in poster_data:
         if data["show_id"] is not None or data["show_id_backdrop"] is not None or data["episode_id"] is not None or data["season_id"] is not None or data["show_id"] is not None:
@@ -348,10 +348,13 @@ def scrape_mediux(soup):
             if data["fileType"] == "title_card":
                 episode_id = data["episode_id"]["id"]
                 season = data["episode_id"]["season_id"]["season_number"]
-                season_data = [episode for episode in episodes if episode["season_number"] == season][0]
-                episode_data = [episode for episode in season_data["episodes"] if episode["id"] == episode_id][0]
-                episode = episode_data["episode_number"]
+                title = data["title"]
+                try:
+                    episode = int(title.split(" E")[1])
+                except:
+                    print(f"Error getting episode number for {title}.")
                 file_type = "title_card"
+                
             elif data["fileType"] == "backdrop":
                 season = "Backdrop"
                 episode = None
