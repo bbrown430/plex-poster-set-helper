@@ -161,9 +161,15 @@ def upload_tv_poster(poster, tv):
                         except:
                             print(f"{poster['title']} - {poster['season']} Episode {poster['episode']} not found in {tv_show.librarySectionTitle} library, skipping.")
                 if poster["season"] == "Backdrop":
-                    upload_target.uploadArt(url=poster['url'])
+                    try:
+                        upload_target.uploadArt(url=poster['url'])
+                    except:
+                        print("Unable to upload last poster.")
                 else:
-                    upload_target.uploadPoster(url=poster['url'])
+                    try:
+                        upload_target.uploadPoster(url=poster['url'])
+                    except:
+                        print("Unable to upload last poster.")
                 if poster["source"] == "posterdb":
                     time.sleep(6)  # too many requests prevention
             except:
@@ -176,10 +182,13 @@ def upload_movie_poster(poster, movies):
     movie_items = find_in_library(movies, poster)
     if movie_items:
         for movie_item in movie_items:
-            movie_item.uploadPoster(poster["url"])
-            print(f'Uploaded art for {poster["title"]} in {movie_item.librarySectionTitle} library.')
-            if poster["source"] == "posterdb":
-                time.sleep(6)  # too many requests prevention
+            try:
+                movie_item.uploadPoster(poster["url"])
+                print(f'Uploaded art for {poster["title"]} in {movie_item.librarySectionTitle} library.')
+                if poster["source"] == "posterdb":
+                    time.sleep(6)  # too many requests prevention
+            except:
+                print(f'Unable to upload art for {poster["title"]} in {movie_item.librarySectionTitle} library.')
     else:
         print(f'{poster["title"]} not found in any library.')
 
@@ -188,10 +197,13 @@ def upload_collection_poster(poster, movies):
     collection_items = find_collection(movies, poster)
     if collection_items:
         for collection in collection_items:
-            collection.uploadPoster(poster["url"])
-            print(f'Uploaded art for {poster["title"]} in {collection.librarySectionTitle} library.')
-            if poster["source"] == "posterdb":
-                time.sleep(6)  # too many requests prevention
+            try:
+                collection.uploadPoster(poster["url"])
+                print(f'Uploaded art for {poster["title"]} in {collection.librarySectionTitle} library.')
+                if poster["source"] == "posterdb":
+                    time.sleep(6)  # too many requests prevention
+            except:
+                print(f'Unable to upload art for {poster["title"]} in {collection.librarySectionTitle} library.')
     else:
         print(f'{poster["title"]} collection not found in any library.')
 
