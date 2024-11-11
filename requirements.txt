@@ -6,3 +6,4 @@ PlexAPI==4.15.6
 requests==2.31.0
 soupsieve==2.5
 urllib3==2.1.0
+customtkinter==5.2.2
