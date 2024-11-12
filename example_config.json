@@ -1,6 +1,7 @@
 {
     "base_url": "",
     "token": "",
+    "bulk_txt": "bulk_import.txt",
     "tv_library": [
         "TV Shows",
         "Anime"

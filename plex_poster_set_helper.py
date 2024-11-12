@@ -10,24 +10,10 @@ import time
 import re
 import customtkinter as ctk
 import threading
+import os
 
 
-# Global variables for UI elements
-app = None
-base_url_entry = None
-token_entry = None
-tv_library_entry = None
-movie_library_entry = None
-url_entry = None
-status_label = None
-mediux_filters_text = None
-error_label = None
-bulk_import_text = None
-bulk_import_button = None
-clear_button = None
-scrape_button = None
-tv_library_text = None
-movie_library_text = None
+config = {}
 
 
 def plex_setup():
@@ -552,14 +538,34 @@ def parse_cli_urls(file_path, tv, movies):
 
 #! ---------------------- GUI TESTING SECTION ----------------------
 
-
+# * Variables for UI elements ---
+app = None
+base_url_entry = None
+token_entry = None
+tv_library_entry = None
+movie_library_entry = None
+url_entry = None
+status_label = None
+mediux_filters_text = None
+error_label = None
+bulk_import_button = None
+clear_button = None
+scrape_button = None
+tv_library_text = None
+movie_library_text = None
+bulk_txt_entry = None
 
 # * UI helper functions ---
+
+def get_full_path(relative_path):
+    '''Helper function to get the absolute path based on the script's location.'''
+    print("relative_path", relative_path)
+    script_dir = os.path.dirname(os.path.abspath(__file__)) 
+    return os.path.join(script_dir, relative_path)
 
 def update_status(message, color="white"):
     '''Update the status label with a message and color.'''
     app.after(0, lambda: status_label.configure(text=message, text_color=color))
-
 
 def update_error(message):
     '''Update the error label with a message.'''
@@ -572,56 +578,86 @@ def clear_url():
      
       
 # * Configuration file I/O functions  ---
-
-def load_config():
-    '''Load the configuration file into the UI fields.'''
+    
+def load_config(config_path="config.json"):
+    '''Load the configuration from the JSON file.'''
     try:
-        config = json.load(open("config.json"))
-        base_url = config["base_url"]
-        token = config["token"]
-        tv_library = config["tv_library"]
-        movie_library = config["movie_library"]
-        mediux_filters = config["mediux_filters"]
+        with open(config_path, "r") as config_file:
+            config = json.load(config_file)
 
-        base_url_entry.delete(0, ctk.END)
-        base_url_entry.insert(0, base_url)
-
-        token_entry.delete(0, ctk.END)
-        token_entry.insert(0, token)
-
-        #? Handle list inputs
-        tv_library_text.delete(1.0, ctk.END)
-        tv_library_text.insert(ctk.END, ", ".join(tv_library))
-
-        movie_library_text.delete(1.0, ctk.END)
-        movie_library_text.insert(ctk.END, ", ".join(movie_library))
-
-        mediux_filters_text.delete(1.0, ctk.END)
-        mediux_filters_text.insert(ctk.END, ", ".join(mediux_filters))
-
+        base_url = config.get("base_url", "")
+        token = config.get("token", "")
+        tv_library = config.get("tv_library", [])
+        movie_library = config.get("movie_library", [])
+        mediux_filters = config.get("mediux_filters", [])
+        bulk_txt = config.get("bulk_txt", "bulk_import.txt")
+        
+        return {
+            "base_url": base_url,
+            "token": token,
+            "tv_library": tv_library,
+            "movie_library": movie_library,
+            "mediux_filters": mediux_filters,
+            "bulk_txt": bulk_txt
+        }
     except Exception as e:
         update_error(f"Error loading config: {str(e)}")
-
-
+        return {} 
+    
 def save_config():
     '''Save the configuration from the UI fields to the file.'''
+    global config
+    bulk_txt_path = bulk_txt_entry.get()
+
     config = {
         "base_url": base_url_entry.get(),
         "token": token_entry.get(),
-        # Split the text area content by comma and strip extra spaces for each item
         "tv_library": [item.strip() for item in tv_library_text.get(1.0, ctk.END).strip().split(",")],
         "movie_library": [item.strip() for item in movie_library_text.get(1.0, ctk.END).strip().split(",")],
-        "mediux_filters": mediux_filters_text.get(1.0, ctk.END).strip().split(", ")
+        "mediux_filters": mediux_filters_text.get(1.0, ctk.END).strip().split(", "),
+        "bulk_txt": bulk_txt_path
     }
+    
     try:
         with open("config.json", "w") as f:
             json.dump(config, f, indent=4)
-        update_status("Configuration saved successfully!", color="green")
+        update_status("Configuration saved successfully!", color="#E5A00D")
+
+        load_bulk_import_file()
     except Exception as e:
         update_status(f"Error saving config: {str(e)}", color="red")
 
-    
+def load_and_update_ui():
+    '''Load the configuration and update the UI fields.'''
+    config_data = load_config()
+    if base_url_entry is not None:
+        base_url_entry.delete(0, ctk.END)
+        base_url_entry.insert(0, config_data.get("base_url", ""))
 
+    if token_entry is not None:
+        token_entry.delete(0, ctk.END)
+        token_entry.insert(0, config_data.get("token", ""))
+
+    if bulk_txt_entry is not None:
+        bulk_txt_entry.delete(0, ctk.END)
+        bulk_txt_entry.insert(0, config_data.get("bulk_txt", "bulk_import.txt"))
+        bulk_import_label = ctk.CTkLabel(app, text=f"Bulk Import File: {config_data.get('bulk_txt', 'bulk_import.txt')}")
+
+    if tv_library_text is not None:
+        tv_library_text.delete(1.0, ctk.END)
+        tv_library_text.insert(ctk.END, ", ".join(config_data.get("tv_library", [])))
+
+    if movie_library_text is not None:
+        movie_library_text.delete(1.0, ctk.END)
+        movie_library_text.insert(ctk.END, ", ".join(config_data.get("movie_library", [])))
+
+    if mediux_filters_text is not None:
+        mediux_filters_text.delete(1.0, ctk.END)
+        mediux_filters_text.insert(ctk.END, ", ".join(config_data.get("mediux_filters", [])))
+
+    load_bulk_import_file()
+        
+             
 
 # * Threaded functions for scraping and setting posters ---  
 
@@ -629,37 +665,31 @@ def run_url_scrape_thread():
     '''Run the URL scrape in a separate thread.'''
     global scrape_button, clear_button, bulk_import_button
     url = url_entry.get()
-    
+
     if not url:
-        status_label.configure(text="Please enter a valid URL.")
+        update_status("Please enter a valid URL.", color="red")
         return
 
     scrape_button.configure(state="disabled")
     clear_button.configure(state="disabled")
     bulk_import_button.configure(state="disabled")
-    
+
     threading.Thread(target=process_scrape_url, args=(url,)).start()
-    
     
 def run_bulk_import_scrape_thread():
     '''Run the bulk import scrape in a separate thread.'''
     global bulk_import_button
     bulk_import_list = bulk_import_text.get(1.0, ctk.END).strip().split("\n")
     valid_urls = parse_urls(bulk_import_list)
-    
+
     if not valid_urls:
-        app.after(
-            0,
-            lambda: status_label.configure(
-                text="No bulk import entries found.", text_color="red"
-            ),
-        )
+        app.after(0, lambda: update_status("No bulk import entries found.", color="red"))
         return
-    
+
     scrape_button.configure(state="disabled")
     clear_button.configure(state="disabled")
     bulk_import_button.configure(state="disabled")
-    
+
     threading.Thread(target=process_bulk_import, args=(valid_urls,)).start()
 
 
@@ -672,22 +702,17 @@ def process_scrape_url(url):
         tv, movies = plex_setup()
         soup = cook_soup(url)
 
-        update_status(f"Scraping: {url}", color="#A1C6EA")
+        update_status(f"Scraping: {url}", color="#E5A00D")
         set_posters(url, tv, movies)
-        update_status(f"Posters successfully set for: {url}", color="green")
-        
+        update_status(f"Posters successfully set for: {url}", color="#E5A00D")
     except Exception as e:
         update_status(f"Error: {e}", color="red")
     finally:
-        app.after(
-            0,
-            lambda: [
-                scrape_button.configure(state="normal"),
-                clear_button.configure(state="normal"),
-                bulk_import_button.configure(state="normal"),
-            ],
-        )
-
+        app.after(0, lambda: [
+            scrape_button.configure(state="normal"),
+            clear_button.configure(state="normal"),
+            bulk_import_button.configure(state="normal"),
+        ])
 
 def process_bulk_import(valid_urls):
     '''Process the bulk import scrape.'''
@@ -695,22 +720,19 @@ def process_bulk_import(valid_urls):
         tv, movies = plex_setup()
         for i, url in enumerate(valid_urls):
             status_text = f"Processing item {i+1} of {len(valid_urls)}: {url}"
-            update_status(status_text, color="#A1C6EA")
+            update_status(status_text, color="#E5A00D")
             set_posters(url, tv, movies)
-            update_status(f"Completed: {url}", color="green")
+            update_status(f"Completed: {url}", color="#E5A00D")
 
-        update_status("Bulk import scraping completed.", color="green")
+        update_status("Bulk import scraping completed.", color="#E5A00D")
     except Exception as e:
         update_status(f"Error during bulk import: {e}", color="red")
     finally:
-        app.after(
-            0,
-            lambda: [
-                scrape_button.configure(state="normal"),
-                clear_button.configure(state="normal"),
-                bulk_import_button.configure(state="normal"),
-            ],
-        )
+        app.after(0, lambda: [
+            scrape_button.configure(state="normal"),
+            clear_button.configure(state="normal"),
+            bulk_import_button.configure(state="normal"),
+        ])
 
 
 
@@ -719,21 +741,35 @@ def process_bulk_import(valid_urls):
 def load_bulk_import_file():
     '''Load the bulk import file into the text area.'''
     try:
-        with open("bulk_import.txt", "r", encoding="utf-8") as file:
+        bulk_txt_path = get_full_path(config.get("bulk_txt", "bulk_import.txt"))
+        
+        if not os.path.exists(bulk_txt_path):
+            bulk_import_text.delete(1.0, ctk.END)
+            bulk_import_text.insert(ctk.END, "Bulk import file path is not set or file does not exist.")
+            status_label.configure(text="Bulk import file path not set or file not found.", text_color="red")
+            return
+        
+        with open(bulk_txt_path, "r", encoding="utf-8") as file:
             content = file.read()
+        
         bulk_import_text.delete(1.0, ctk.END)
         bulk_import_text.insert(ctk.END, content)
+    
     except FileNotFoundError:
         bulk_import_text.delete(1.0, ctk.END)
         bulk_import_text.insert(ctk.END, "File not found or empty.")
-
+    except Exception as e:
+        bulk_import_text.delete(1.0, ctk.END)
+        bulk_import_text.insert(ctk.END, f"Error loading file: {str(e)}")
 
 def save_bulk_import_file():
     '''Save the bulk import text area content to a file.'''
     try:
-        with open("bulk_import.txt", "w", encoding="utf-8") as file:
+        bulk_txt_path = get_full_path(config.get("bulk_txt", "bulk_import.txt"))
+
+        with open(bulk_txt_path, "w", encoding="utf-8") as file:
             file.write(bulk_import_text.get(1.0, ctk.END).strip())
-        status_label.configure(text="Bulk import file saved!", text_color="green")
+        status_label.configure(text="Bulk import file saved!", text_color="#E5A00D")
     except Exception as e:
         status_label.configure(
             text=f"Error saving bulk import file: {str(e)}", text_color="red"
@@ -741,170 +777,254 @@ def save_bulk_import_file():
 
 
 
+# * Button Creation ---
+
+def create_button(container, text, command, primary=False):
+    """Create a custom button with hover effects for a CustomTkinter GUI."""
+    
+    button_height = 35 
+    button_fg = "#343434" 
+    button_border = "#343434"
+    button_text_color = "#A9A9A9" 
+    plex_orange = "#E5A00D"
+
+    if primary:
+        button_fg = plex_orange 
+        button_border = plex_orange 
+        button_text_color = "#282a2d"
+    
+    button = ctk.CTkButton(
+        container,
+        text=text,
+        command=command,
+        text_color=button_text_color, 
+        fg_color=button_fg,
+        border_color=button_border, 
+        border_width=1,
+        hover_color="#333333",
+        font=('Arial', 12, "bold"),
+        width=80,
+        height=button_height
+    )
+    
+    def on_enter(event):
+        """Change button appearance when mouse enters."""
+        if primary:
+            button.configure(fg_color="#282a2d", text_color=plex_orange, border_color=plex_orange)
+        else:
+            button.configure(text_color=plex_orange, border_color=plex_orange)
+    
+    def on_leave(event):
+        """Reset button appearance when mouse leaves."""
+        if primary:
+            button.configure(fg_color=plex_orange, text_color="#282a2d", border_color=plex_orange)
+        else:
+            button.configure(text_color="#A9A9A9", border_color="#343434")
+    
+    button.bind("<Enter>", on_enter)
+    button.bind("<Leave>", on_leave)
+    
+    return button
+
+
+
 # * Main UI Creation function ---
 
 def create_ui():
     '''Create the main UI window.'''
-    global scrape_button, clear_button, mediux_filters_text, error_label, bulk_import_text, base_url_entry, token_entry, tv_library_entry, movie_library_entry, status_label, url_entry, app, bulk_import_button, tv_library_text, movie_library_text
+    global scrape_button, clear_button, mediux_filters_text, error_label, bulk_import_text, base_url_entry, token_entry, tv_library_entry, movie_library_entry, status_label, url_entry, app, bulk_import_button, tv_library_text, movie_library_text, bulk_txt_entry
 
     app = ctk.CTk()
     app.title("Plex Poster Upload Helper")
     app.geometry("800x500")
+    app.iconbitmap("icons/Plex.ico")
+
 
     #! Create Tabview
     tabview = ctk.CTkTabview(app)
-    tabview.pack(fill="both", expand=True, padx=2, pady=0)
+    tabview.pack(fill="both", expand=True, padx=5, pady=5)
 
+    tabview.configure(
+        segmented_button_fg_color="#3C3C3C",
+        segmented_button_selected_color="#101010",
+        segmented_button_selected_hover_color="#040404",
+        segmented_button_unselected_color="#2F2F2F",
+        segmented_button_unselected_hover_color="#101111",
+        text_color="#A1A1A1",
+        text_color_disabled="#777777",
+        border_color="#606060",
+        border_width=1,
+        height=400,
+    )
+    
+    
     #! Settings Tab --
     settings_tab = tabview.add("Settings")
 
-    settings_tab.grid_columnconfigure(0, weight=1)
-    settings_tab.grid_columnconfigure(1, weight=2)
+    settings_tab.grid_columnconfigure(0, weight=0)
+    settings_tab.grid_columnconfigure(1, weight=1)
+    
 
     # ? Form Fields for Settings Tab
     base_url_label = ctk.CTkLabel(settings_tab, text="Plex Base URL:")
     base_url_label.grid(row=0, column=0, pady=5, padx=10, sticky="w")
-    base_url_entry = ctk.CTkEntry(settings_tab, placeholder_text="Enter Plex Base URL")
+    base_url_entry = ctk.CTkEntry(settings_tab, placeholder_text="Enter Plex Base URL", fg_color="#1D1E1E", border_width=0)
     base_url_entry.grid(row=0, column=1, pady=5, padx=10, sticky="ew")
 
     token_label = ctk.CTkLabel(settings_tab, text="Plex Token:")
     token_label.grid(row=1, column=0, pady=5, padx=10, sticky="w")
-    token_entry = ctk.CTkEntry(settings_tab, placeholder_text="Enter Plex Token")
+    token_entry = ctk.CTkEntry(settings_tab, placeholder_text="Enter Plex Token", fg_color="#1D1E1E", border_width=0)
     token_entry.grid(row=1, column=1, pady=5, padx=10, sticky="ew")
+
+    bulk_txt_label = ctk.CTkLabel(settings_tab, text="Bulk Import File:")
+    bulk_txt_label.grid(row=2, column=0, pady=5, padx=10, sticky="w")
+    bulk_txt_entry = ctk.CTkEntry(settings_tab, placeholder_text="Enter bulk import file path", fg_color="#1D1E1E", border_width=0)
+    bulk_txt_entry.grid(row=2, column=1, pady=5, padx=10, sticky="ew")
 
     # TV Library (multiline text field for multiple entries)
     tv_library_label = ctk.CTkLabel(settings_tab, text="TV Library Names:")
-    tv_library_label.grid(row=2, column=0, pady=5, padx=10, sticky="w")
+    tv_library_label.grid(row=3, column=0, pady=5, padx=10, sticky="w")
     tv_library_text = ctk.CTkTextbox(settings_tab, height=3, width=40)
-    tv_library_text.grid(row=2, column=1, pady=5, padx=10, sticky="ew")
+    tv_library_text.grid(row=3, column=1, pady=5, padx=10, sticky="ew")
 
     # Movie Library (multiline text field for multiple entries)
     movie_library_label = ctk.CTkLabel(settings_tab, text="Movie Library Names:")
-    movie_library_label.grid(row=3, column=0, pady=5, padx=10, sticky="w")
+    movie_library_label.grid(row=4, column=0, pady=5, padx=10, sticky="w")
     movie_library_text = ctk.CTkTextbox(settings_tab, height=3, width=40)
-    movie_library_text.grid(row=3, column=1, pady=5, padx=10, sticky="ew")
+    movie_library_text.grid(row=4, column=1, pady=5, padx=10, sticky="ew")
 
+    # Mediux Filters (multiline text field for multiple entries)
     mediux_filters_label = ctk.CTkLabel(settings_tab, text="Mediux Filters:")
-    mediux_filters_label.grid(row=4, column=0, pady=5, padx=10, sticky="w")
+    mediux_filters_label.grid(row=5, column=0, pady=5, padx=10, sticky="w")
     mediux_filters_text = ctk.CTkTextbox(settings_tab, height=5, width=40)
-    mediux_filters_text.grid(row=4, column=1, pady=5, padx=10, sticky="ew")
+    mediux_filters_text.grid(row=5, column=1, pady=5, padx=10, sticky="ew")
 
     settings_tab.grid_rowconfigure(0, weight=0)
     settings_tab.grid_rowconfigure(1, weight=0)
     settings_tab.grid_rowconfigure(2, weight=0)
     settings_tab.grid_rowconfigure(3, weight=0)
     settings_tab.grid_rowconfigure(4, weight=0)
-    settings_tab.grid_rowconfigure(5, weight=1)
+    settings_tab.grid_rowconfigure(5, weight=0) 
+    settings_tab.grid_rowconfigure(6, weight=1) 
 
     # ? Load and Save Buttons (Anchored to the bottom)
-    load_button = ctk.CTkButton(settings_tab, text="Load Config", command=load_config)
-    load_button.grid(row=6, column=0, pady=10, padx=10, sticky="ew")
-    save_button = ctk.CTkButton(settings_tab, text="Save Config", command=save_config)
-    save_button.grid(row=6, column=1, pady=10, padx=10, sticky="ew")
-    settings_tab.grid_rowconfigure(5, weight=1)
+    load_button = create_button(settings_tab, text="Load Config", command=load_and_update_ui)
+    load_button.grid(row=7, column=0, pady=5, padx=5, sticky="ew")
+    save_button = create_button(settings_tab, text="Save Config", command=save_config, primary=True)
+    save_button.grid(row=7, column=1, pady=5, padx=5, sticky="ew")
+
+    settings_tab.grid_rowconfigure(7, weight=0, minsize=40)
+
 
     #! Bulk Import Tab --
     bulk_import_tab = tabview.add("Bulk Import")
-    bulk_import_tab.grid_columnconfigure(0, weight=2)
-    bulk_import_tab.grid_columnconfigure(1, weight=0)
-    bulk_import_tab.grid_columnconfigure(2, weight=0)
 
-    # ? Bulk URL Text Area
-    bulk_import_label = ctk.CTkLabel(bulk_import_tab, text="Bulk Import Text:")
+    bulk_import_tab.grid_columnconfigure(0, weight=0)  # Smaller width for the reload button (0 weight)
+    bulk_import_tab.grid_columnconfigure(1, weight=3)  # Wider width for the save button (3 weight)
+    bulk_import_tab.grid_columnconfigure(2, weight=0)  # Extra column space with 0 weight
+
+    bulk_import_label = ctk.CTkLabel(bulk_import_tab, text=f"Bulk Import Text: {config.get('bulk_txt')}")
     bulk_import_label.grid(row=0, column=0, pady=5, padx=10, sticky="w")
     bulk_import_text = ctk.CTkTextbox(
         bulk_import_tab,
         height=15,
         wrap="none",
-        corner_radius=10,
-        border_width=2,
         state="normal",
+        fg_color="#1D1E1E", 
     )
     bulk_import_text.grid(row=1, column=0, padx=10, pady=5, sticky="nsew", columnspan=2)
 
-    bulk_import_tab.grid_rowconfigure(0, weight=0)  # ? Label row doesn't stretch
-    bulk_import_tab.grid_rowconfigure(1, weight=1)  # ? Text area row expands and fills available space
-    bulk_import_tab.grid_rowconfigure(2, weight=0)  # ? Button row takes minimal space
+    bulk_import_tab.grid_rowconfigure(0, weight=0)  # Label row doesn't stretch
+    bulk_import_tab.grid_rowconfigure(1, weight=1)  # Text area row expands and fills available space
+    bulk_import_tab.grid_rowconfigure(2, weight=0)  # Button row takes minimal space
 
-    # ? Button row: Load, Save, Run buttons
-    load_bulk_button = ctk.CTkButton(bulk_import_tab, text="Load Bulk Import File", command=load_bulk_import_file)
-    load_bulk_button.grid(row=2, column=0, pady=5, padx=5, sticky="ew")
-    save_bulk_button = ctk.CTkButton(bulk_import_tab, text="Save Bulk Import File", command=save_bulk_import_file)
-    save_bulk_button.grid(row=2, column=1, pady=5, padx=5, sticky="ew")
-    bulk_import_button = ctk.CTkButton(bulk_import_tab, text="Run Bulk Import Scrape", command=run_bulk_import_scrape_thread)
-    bulk_import_button.grid(row=3, column=0, pady=10, padx=5, sticky="ew", columnspan=3)
+    # Button row: Load, Save, Run buttons
+    load_bulk_button = create_button(bulk_import_tab, text="Reload", command=load_bulk_import_file)
+    load_bulk_button.grid(row=2, column=0, pady=5, padx=5, sticky="ew")  # 1 column width (smaller)
 
-    #! Poster Scrape Tab --
+    save_bulk_button = create_button(bulk_import_tab, text="Save", command=save_bulk_import_file)
+    save_bulk_button.grid(row=2, column=1, pady=5, padx=5, sticky="ew", columnspan=2)  # 2 column width (wider)
+
+    bulk_import_button = create_button(bulk_import_tab, text="Run Bulk Import", command=run_bulk_import_scrape_thread, primary=True)
+    bulk_import_button.grid(row=3, column=0, pady=5, padx=5, sticky="ew", columnspan=3)
+
+
+    # ! Poster Scrape Tab --
     poster_scrape_tab = tabview.add("Poster Scrape")
 
     poster_scrape_tab.grid_columnconfigure(0, weight=0)
     poster_scrape_tab.grid_columnconfigure(1, weight=1)
+    poster_scrape_tab.grid_columnconfigure(2, weight=0)
 
     # ? URL entry field
     url_label = ctk.CTkLabel(poster_scrape_tab, text="Poster Scrape URL:")
     url_label.grid(row=0, column=0, pady=5, padx=5, sticky="w")
-    url_entry = ctk.CTkEntry(poster_scrape_tab, placeholder_text="Enter URL for scraping posters")
+    url_entry = ctk.CTkEntry(poster_scrape_tab, placeholder_text="Enter URL for scraping posters", fg_color="#1D1E1E", border_width=0)
     url_entry.grid(row=0, column=1, pady=5, padx=5, sticky="ew")
 
     # ? Buttons: Scrape and Clear
-    scrape_button = ctk.CTkButton(poster_scrape_tab, text="Scrape and Set Posters", command=run_url_scrape_thread)
-    scrape_button.grid(row=1, column=0, pady=5, padx=5, sticky="ew", columnspan=2)
+    clear_button = create_button(poster_scrape_tab, text="Clear", command=clear_url)
+    clear_button.grid(row=1, column=0, pady=5, padx=5, sticky="ew")
 
-    clear_button = ctk.CTkButton(poster_scrape_tab, text="Clear", command=clear_url)
-    clear_button.grid(row=2, column=0, pady=5, padx=5, sticky="ew", columnspan=2)
+    scrape_button = create_button(poster_scrape_tab, text="Scrape and Set Posters", command=run_url_scrape_thread, primary=True)
+    scrape_button.grid(row=1, column=1, pady=5, padx=5, sticky="ew", columnspan=2)
 
-    poster_scrape_tab.grid_rowconfigure(0, weight=1)  # ? URL entry field should expand and fill available space
-    poster_scrape_tab.grid_rowconfigure(1, weight=0)  # ? Button row should take minimal space
-    poster_scrape_tab.grid_rowconfigure(2, weight=0)  # ? Clear button should take minimal space
+    poster_scrape_tab.grid_rowconfigure(0, weight=1)
+    poster_scrape_tab.grid_rowconfigure(1, weight=0)
+
 
     #! Status and Error Labels --
-    status_label = ctk.CTkLabel(app, text="", text_color="green")
+    status_label = ctk.CTkLabel(app, text="", text_color="#E5A00D")
     status_label.pack(side="bottom", fill="x", pady=(5))
 
     error_label = ctk.CTkLabel(app, text="", text_color="red")
     error_label.pack(side="bottom", fill="x", pady=5)
 
     #! Load configuration and bulk import data at start
-    load_config()
-    load_bulk_import_file()
-
+    load_and_update_ui()
+    
     app.mainloop()
 
 
 
 # * Main Initialization ---
+
 if __name__ == "__main__":
     # Set stdout encoding to UTF-8
     sys.stdout.reconfigure(encoding='utf-8')
+    config = load_config() 
+    bulk_txt = config.get("bulk_txt", "bulk_import.txt")
+
     tv, movies = plex_setup()
-    
-    # Check for command-line arguments
+
+    # ! Check for command-line arguments
     if len(sys.argv) > 1:
         command = sys.argv[1].lower()
-        
-        # Launch the GUI
+
+        # ? Launch the GUI
         if command == 'gui':
             create_ui()
-        
-        # Run bulk import
+
+        # ? Run bulk import
         elif command == 'bulk':
             if len(sys.argv) > 2:
                 file_path = sys.argv[2]
                 parse_cli_urls(file_path, tv, movies)
             else:
-                print("Please provide the path to the .txt file for bulk import.")
-        
+                print(f"Using bulk import file: {bulk_txt}")
+                parse_cli_urls(bulk_txt, tv, movies)
+
         # Handle single URL or user URL
         elif "/user/" in command:
             scrape_entire_user(command)
         else:
             set_posters(command, tv, movies)
-    
-    # CLI-based user input loop (fallback if no arguments were provided)
+
+    # ! CLI-based user input loop (fallback if no arguments were provided)
     else:
         while True:
             user_input = input("Enter a ThePosterDB set (or user) or a MediUX set URL, or 'gui' to launch UI: ")
-            
+
             if user_input.lower() == 'stop':
                 print("Stopping...")
                 break
