@@ -26,6 +26,8 @@ bulk_import_text = None
 bulk_import_button = None
 clear_button = None
 scrape_button = None
+tv_library_text = None
+movie_library_text = None
 
 
 def plex_setup():
@@ -485,6 +487,7 @@ def scrape(url):
 
 
 def scrape_entire_user(url):
+    '''Scrape all pages of a user's uploads.'''
     soup = cook_soup(url) 
     pages = scrape_posterd_user_info(soup)
     
@@ -503,12 +506,14 @@ def scrape_entire_user(url):
 
 
 def is_not_comment(url):
+    '''Check if the URL is not a comment or empty line.'''
     regex = r"^(?!\/\/|#|^$)"
     pattern = re.compile(regex)
     return True if re.match(pattern, url) else False
 
 
 def parse_urls(bulk_import_list):
+    '''Parse the URLs from a list and scrape them.'''
     valid_urls = []
     for line in bulk_import_list:
         url = line.strip()
@@ -525,10 +530,22 @@ def parse_urls(bulk_import_list):
             # If it's not a /user/ URL, return it as before
             return valid_urls
 
-    # Return the list of valid URLs, unchanged for non-user URLs
     return valid_urls
 
-
+def parse_cli_urls(file_path, tv, movies):
+    '''Parse the URLs from a file and scrape them.'''
+    try:
+        with open(file_path, 'r', encoding='utf-8') as file:
+            urls = file.readlines()
+        for url in urls:
+            url = url.strip()
+            if is_not_comment(url):
+                if "/user/" in url:
+                    scrape_entire_user(url)
+                else:
+                    set_posters(url, tv, movies)
+    except FileNotFoundError:
+        print("File not found. Please enter a valid file path.")
 
 
 
@@ -572,17 +589,18 @@ def load_config():
         token_entry.delete(0, ctk.END)
         token_entry.insert(0, token)
 
-        tv_library_entry.delete(0, ctk.END)
-        tv_library_entry.insert(0, tv_library)
+        #? Handle list inputs
+        tv_library_text.delete(1.0, ctk.END)
+        tv_library_text.insert(ctk.END, ", ".join(tv_library))
 
-        movie_library_entry.delete(0, ctk.END)
-        movie_library_entry.insert(0, movie_library)
+        movie_library_text.delete(1.0, ctk.END)
+        movie_library_text.insert(ctk.END, ", ".join(movie_library))
 
         mediux_filters_text.delete(1.0, ctk.END)
         mediux_filters_text.insert(ctk.END, ", ".join(mediux_filters))
 
     except Exception as e:
-        error_label.configure(text=f"Error loading config: {str(e)}", text_color="red")
+        update_error(f"Error loading config: {str(e)}")
 
 
 def save_config():
@@ -590,18 +608,18 @@ def save_config():
     config = {
         "base_url": base_url_entry.get(),
         "token": token_entry.get(),
-        "tv_library": tv_library_entry.get(),
-        "movie_library": movie_library_entry.get(),
-        "mediux_filters": mediux_filters_text.get(1.0, ctk.END).strip().split(", "),
+        # Split the text area content by comma and strip extra spaces for each item
+        "tv_library": [item.strip() for item in tv_library_text.get(1.0, ctk.END).strip().split(",")],
+        "movie_library": [item.strip() for item in movie_library_text.get(1.0, ctk.END).strip().split(",")],
+        "mediux_filters": mediux_filters_text.get(1.0, ctk.END).strip().split(", ")
     }
     try:
         with open("config.json", "w") as f:
             json.dump(config, f, indent=4)
-        status_label.configure(
-            text="Configuration saved successfully!", text_color="green"
-        )
+        update_status("Configuration saved successfully!", color="green")
     except Exception as e:
-        status_label.configure(text=f"Error saving config: {str(e)}", text_color="red")    
+        update_status(f"Error saving config: {str(e)}", color="red")
+
     
 
 
@@ -727,7 +745,7 @@ def save_bulk_import_file():
 
 def create_ui():
     '''Create the main UI window.'''
-    global scrape_button, clear_button, mediux_filters_text, error_label, bulk_import_text, base_url_entry, token_entry, tv_library_entry, movie_library_entry, status_label, url_entry, app, bulk_import_button
+    global scrape_button, clear_button, mediux_filters_text, error_label, bulk_import_text, base_url_entry, token_entry, tv_library_entry, movie_library_entry, status_label, url_entry, app, bulk_import_button, tv_library_text, movie_library_text
 
     app = ctk.CTk()
     app.title("Plex Poster Upload Helper")
@@ -754,15 +772,17 @@ def create_ui():
     token_entry = ctk.CTkEntry(settings_tab, placeholder_text="Enter Plex Token")
     token_entry.grid(row=1, column=1, pady=5, padx=10, sticky="ew")
 
-    tv_library_label = ctk.CTkLabel(settings_tab, text="TV Library Name:")
+    # TV Library (multiline text field for multiple entries)
+    tv_library_label = ctk.CTkLabel(settings_tab, text="TV Library Names:")
     tv_library_label.grid(row=2, column=0, pady=5, padx=10, sticky="w")
-    tv_library_entry = ctk.CTkEntry(settings_tab, placeholder_text="Enter TV Library Name")
-    tv_library_entry.grid(row=2, column=1, pady=5, padx=10, sticky="ew")
+    tv_library_text = ctk.CTkTextbox(settings_tab, height=3, width=40)
+    tv_library_text.grid(row=2, column=1, pady=5, padx=10, sticky="ew")
 
-    movie_library_label = ctk.CTkLabel(settings_tab, text="Movie Library Name:")
+    # Movie Library (multiline text field for multiple entries)
+    movie_library_label = ctk.CTkLabel(settings_tab, text="Movie Library Names:")
     movie_library_label.grid(row=3, column=0, pady=5, padx=10, sticky="w")
-    movie_library_entry = ctk.CTkEntry(settings_tab, placeholder_text="Enter Movie Library Name")
-    movie_library_entry.grid(row=3, column=1, pady=5, padx=10, sticky="ew")
+    movie_library_text = ctk.CTkTextbox(settings_tab, height=3, width=40)
+    movie_library_text.grid(row=3, column=1, pady=5, padx=10, sticky="ew")
 
     mediux_filters_label = ctk.CTkLabel(settings_tab, text="Mediux Filters:")
     mediux_filters_label.grid(row=4, column=0, pady=5, padx=10, sticky="w")
@@ -852,8 +872,49 @@ def create_ui():
 
 
 
-# * Initialization ---
-
+# * Main Initialization ---
 if __name__ == "__main__":
-    '''Main function to initialize the UI.'''
-    create_ui()
+    # Set stdout encoding to UTF-8
+    sys.stdout.reconfigure(encoding='utf-8')
+    tv, movies = plex_setup()
+    
+    # Check for command-line arguments
+    if len(sys.argv) > 1:
+        command = sys.argv[1].lower()
+        
+        # Launch the GUI
+        if command == 'gui':
+            create_ui()
+        
+        # Run bulk import
+        elif command == 'bulk':
+            if len(sys.argv) > 2:
+                file_path = sys.argv[2]
+                parse_cli_urls(file_path, tv, movies)
+            else:
+                print("Please provide the path to the .txt file for bulk import.")
+        
+        # Handle single URL or user URL
+        elif "/user/" in command:
+            scrape_entire_user(command)
+        else:
+            set_posters(command, tv, movies)
+    
+    # CLI-based user input loop (fallback if no arguments were provided)
+    else:
+        while True:
+            user_input = input("Enter a ThePosterDB set (or user) or a MediUX set URL, or 'gui' to launch UI: ")
+            
+            if user_input.lower() == 'stop':
+                print("Stopping...")
+                break
+            elif user_input.lower() == 'gui':
+                create_ui()
+                break
+            elif user_input.lower() == 'bulk':
+                file_path = input("Enter the path to the .txt file: ")
+                parse_cli_urls(file_path, tv, movies)
+            elif "/user/" in user_input.lower():
+                scrape_entire_user(user_input)
+            else:
+                set_posters(user_input, tv, movies)
