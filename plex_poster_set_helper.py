@@ -16,48 +16,66 @@ import os
 config = {}
 
 
-def plex_setup():
+def plex_setup(gui_mode=False):
+    # Check if config.json exists
     if os.path.exists("config.json"):
         try:
             config = json.load(open("config.json"))
-            base_url = config["base_url"]
-            token = config["token"]
-            tv_library = config["tv_library"]
-            movie_library = config["movie_library"]
+            base_url = config.get("base_url", "")
+            token = config.get("token", "")
+            tv_library = config.get("tv_library", [])
+            movie_library = config.get("movie_library", [])
         except:
-            sys.exit("Error with config.json file. Please consult the readme.md.") 
-        try:
-            plex = PlexServer(base_url, token)
-        except requests.exceptions.RequestException:
-            sys.exit('Unable to connect to Plex server. Please check the "base_url" in config.json, and consult the readme.md.')
-        except plexapi.exceptions.Unauthorized:
-            sys.exit('Invalid Plex token. Please check the "token" in config.json, and consult the readme.md.')
-        if isinstance(tv_library, str):
-            tv_library = [tv_library] 
-        elif not isinstance(tv_library, list):
-            sys.exit("tv_library must be either a string or a list")
-        tv = []
-        for tv_lib in tv_library:
-            try:
-                plex_tv = plex.library.section(tv_lib)
-                tv.append(plex_tv)
-            except plexapi.exceptions.NotFound:
-                sys.exit(f'TV library named "{tv_lib}" not found. Please check the "tv_library" in config.json, and consult the readme.md.')        
-        if isinstance(movie_library, str):
-            movie_library = [movie_library] 
-        elif not isinstance(movie_library, list):
-            sys.exit("movie_library must be either a string or a list")
-        movies = []
-        for movie_lib in movie_library:
-            try:
-                plex_movie = plex.library.section(movie_lib)
-                movies.append(plex_movie)
-            except plexapi.exceptions.NotFound:
-                sys.exit(f'Movie library named "{movie_lib}" not found. Please check the "movie_library" in config.json, and consult the readme.md.')
-        return tv, movies
+            sys.exit("Error with config.json file. Please consult the readme.md.")
     else:
-        sys.exit("No config.json file found. Please consult the readme.md.")   
+        # No config file, skip setting up Plex for now
+        base_url, token, tv_library, movie_library = "", "", [], []
 
+    # If running in GUI mode, allow the user to fill in missing fields
+    if gui_mode:
+        # Skip setting up Plex if config isn't fully available yet
+        if not base_url or not token or not tv_library or not movie_library:
+            print("Plex setup is incomplete. Please set up your configuration in the GUI.")
+            return None, None  # Return early with None values indicating an incomplete setup
+
+    # Validate the fields (still checking for necessary fields if we're not in GUI mode)
+    if not base_url or not token:
+        sys.exit('Invalid Plex token or base URL. Please provide valid values in config.json or via the GUI.')
+
+    try:
+        plex = PlexServer(base_url, token)
+    except requests.exceptions.RequestException:
+        sys.exit('Unable to connect to Plex server. Please check the "base_url" in config.json or provide one.')
+    except plexapi.exceptions.Unauthorized:
+        sys.exit('Invalid Plex token. Please check the "token" in config.json or provide one.')
+
+    if isinstance(tv_library, str):
+        tv_library = [tv_library] 
+    elif not isinstance(tv_library, list):
+        sys.exit("tv_library must be either a string or a list")
+
+    tv = []
+    for tv_lib in tv_library:
+        try:
+            plex_tv = plex.library.section(tv_lib)
+            tv.append(plex_tv)
+        except plexapi.exceptions.NotFound:
+            sys.exit(f'TV library named "{tv_lib}" not found. Please check the "tv_library" in config.json or provide one.')
+
+    if isinstance(movie_library, str):
+        movie_library = [movie_library] 
+    elif not isinstance(movie_library, list):
+        sys.exit("movie_library must be either a string or a list")
+
+    movies = []
+    for movie_lib in movie_library:
+        try:
+            plex_movie = plex.library.section(movie_lib)
+            movies.append(plex_movie)
+        except plexapi.exceptions.NotFound:
+            sys.exit(f'Movie library named "{movie_lib}" not found. Please check the "movie_library" in config.json or provide one.')
+
+    return tv, movies
 
 
 def cook_soup(url):  
@@ -555,7 +573,23 @@ tv_library_text = None
 movie_library_text = None
 bulk_txt_entry = None
 
+
 # * UI helper functions ---
+
+def get_exe_dir():
+    """Get the directory of the executable or script file."""
+    return os.path.dirname(sys.executable) if getattr(sys, 'frozen', False) else os.path.dirname(__file__)
+
+def resource_path(relative_path):
+    """Get the absolute path to resource, works for dev and for PyInstaller bundle."""
+    try:
+        # PyInstaller creates a temp folder for the bundled app, MEIPASS is the path to that folder
+        base_path = sys._MEIPASS
+    except Exception:
+        # If running in a normal Python environment, use the current working directory
+        base_path = os.path.abspath(".")
+
+    return os.path.join(base_path, relative_path)
 
 def get_full_path(relative_path):
     '''Helper function to get the absolute path based on the script's location.'''
@@ -579,8 +613,32 @@ def clear_url():
       
 # * Configuration file I/O functions  ---
     
+import os
+import json
+
 def load_config(config_path="config.json"):
-    '''Load the configuration from the JSON file.'''
+    '''Load the configuration from the JSON file. If it doesn't exist, create it with default values.'''
+    # Default config values
+    default_config = {
+        "base_url": "",
+        "token": "",
+        "bulk_txt": "bulk_import.txt",
+        "tv_library": ["TV Shows", "Anime"],
+        "movie_library": ["Movies"],
+        "mediux_filters": ["title_card", "background", "season_cover", "show_cover"]
+    }
+
+    if not os.path.isfile(config_path):
+        try:
+            # If the file doesn't exist, create it with default content
+            with open(config_path, "w") as config_file:
+                json.dump(default_config, config_file, indent=4)
+            print(f"Config file '{config_path}' created with default settings.")
+        except Exception as e:
+            update_error(f"Error creating config: {str(e)}")
+            return {}
+
+    # Load the configuration from the file
     try:
         with open(config_path, "r") as config_file:
             config = json.load(config_file)
@@ -591,7 +649,7 @@ def load_config(config_path="config.json"):
         movie_library = config.get("movie_library", [])
         mediux_filters = config.get("mediux_filters", [])
         bulk_txt = config.get("bulk_txt", "bulk_import.txt")
-        
+
         return {
             "base_url": base_url,
             "token": token,
@@ -602,7 +660,8 @@ def load_config(config_path="config.json"):
         }
     except Exception as e:
         update_error(f"Error loading config: {str(e)}")
-        return {} 
+        return {}
+
     
 def save_config():
     '''Save the configuration from the UI fields to the file.'''
@@ -741,14 +800,18 @@ def process_bulk_import(valid_urls):
 def load_bulk_import_file():
     '''Load the bulk import file into the text area.'''
     try:
-        bulk_txt_path = get_full_path(config.get("bulk_txt", "bulk_import.txt"))
+        # Set the file path relative to the executable directory
+        exe_path = get_exe_dir()
+        bulk_txt_path = os.path.join(exe_path, config.get("bulk_txt", "bulk_import.txt"))
         
+        # Check if the file exists
         if not os.path.exists(bulk_txt_path):
             bulk_import_text.delete(1.0, ctk.END)
             bulk_import_text.insert(ctk.END, "Bulk import file path is not set or file does not exist.")
             status_label.configure(text="Bulk import file path not set or file not found.", text_color="red")
             return
         
+        # Load and display file content if it exists
         with open(bulk_txt_path, "r", encoding="utf-8") as file:
             content = file.read()
         
@@ -763,12 +826,19 @@ def load_bulk_import_file():
         bulk_import_text.insert(ctk.END, f"Error loading file: {str(e)}")
 
 def save_bulk_import_file():
-    '''Save the bulk import text area content to a file.'''
+    '''Save the bulk import text area content to a file relative to the executable location.'''
     try:
-        bulk_txt_path = get_full_path(config.get("bulk_txt", "bulk_import.txt"))
+        # Set the file path relative to the executable/script directory
+        exe_path = get_exe_dir()
+        bulk_txt_path = os.path.join(exe_path, config.get("bulk_txt", "bulk_import.txt"))
 
+        # Ensure the directory exists
+        os.makedirs(os.path.dirname(bulk_txt_path), exist_ok=True)
+
+        # Write content to the file
         with open(bulk_txt_path, "w", encoding="utf-8") as file:
             file.write(bulk_import_text.get(1.0, ctk.END).strip())
+
         status_label.configure(text="Bulk import file saved!", text_color="#E5A00D")
     except Exception as e:
         status_label.configure(
@@ -837,7 +907,7 @@ def create_ui():
     app = ctk.CTk()
     app.title("Plex Poster Upload Helper")
     app.geometry("800x500")
-    app.iconbitmap("icons/Plex.ico")
+    app.iconbitmap(resource_path("icons/Plex.ico"))
 
 
     #! Create Tabview
@@ -919,9 +989,9 @@ def create_ui():
     #! Bulk Import Tab --
     bulk_import_tab = tabview.add("Bulk Import")
 
-    bulk_import_tab.grid_columnconfigure(0, weight=0)  # Smaller width for the reload button (0 weight)
-    bulk_import_tab.grid_columnconfigure(1, weight=3)  # Wider width for the save button (3 weight)
-    bulk_import_tab.grid_columnconfigure(2, weight=0)  # Extra column space with 0 weight
+    bulk_import_tab.grid_columnconfigure(0, weight=0) 
+    bulk_import_tab.grid_columnconfigure(1, weight=3) 
+    bulk_import_tab.grid_columnconfigure(2, weight=0) 
 
     bulk_import_label = ctk.CTkLabel(bulk_import_tab, text=f"Bulk Import Text: {config.get('bulk_txt')}")
     bulk_import_label.grid(row=0, column=0, pady=5, padx=10, sticky="w")
@@ -934,16 +1004,16 @@ def create_ui():
     )
     bulk_import_text.grid(row=1, column=0, padx=10, pady=5, sticky="nsew", columnspan=2)
 
-    bulk_import_tab.grid_rowconfigure(0, weight=0)  # Label row doesn't stretch
-    bulk_import_tab.grid_rowconfigure(1, weight=1)  # Text area row expands and fills available space
-    bulk_import_tab.grid_rowconfigure(2, weight=0)  # Button row takes minimal space
+    bulk_import_tab.grid_rowconfigure(0, weight=0)
+    bulk_import_tab.grid_rowconfigure(1, weight=1) 
+    bulk_import_tab.grid_rowconfigure(2, weight=0)
 
     # Button row: Load, Save, Run buttons
     load_bulk_button = create_button(bulk_import_tab, text="Reload", command=load_bulk_import_file)
-    load_bulk_button.grid(row=2, column=0, pady=5, padx=5, sticky="ew")  # 1 column width (smaller)
+    load_bulk_button.grid(row=2, column=0, pady=5, padx=5, sticky="ew") 
 
     save_bulk_button = create_button(bulk_import_tab, text="Save", command=save_bulk_import_file)
-    save_bulk_button.grid(row=2, column=1, pady=5, padx=5, sticky="ew", columnspan=2)  # 2 column width (wider)
+    save_bulk_button.grid(row=2, column=1, pady=5, padx=5, sticky="ew", columnspan=2) 
 
     bulk_import_button = create_button(bulk_import_tab, text="Run Bulk Import", command=run_bulk_import_scrape_thread, primary=True)
     bulk_import_button.grid(row=3, column=0, pady=5, padx=5, sticky="ew", columnspan=3)
@@ -956,13 +1026,13 @@ def create_ui():
     poster_scrape_tab.grid_columnconfigure(1, weight=1)
     poster_scrape_tab.grid_columnconfigure(2, weight=0)
 
-    # ? URL entry field
+    # URL entry field
     url_label = ctk.CTkLabel(poster_scrape_tab, text="Poster Scrape URL:")
     url_label.grid(row=0, column=0, pady=5, padx=5, sticky="w")
     url_entry = ctk.CTkEntry(poster_scrape_tab, placeholder_text="Enter URL for scraping posters", fg_color="#1D1E1E", border_width=0)
     url_entry.grid(row=0, column=1, pady=5, padx=5, sticky="ew")
 
-    # ? Buttons: Scrape and Clear
+    # Buttons: Scrape and Clear
     clear_button = create_button(poster_scrape_tab, text="Clear", command=clear_url)
     clear_button.grid(row=1, column=0, pady=5, padx=5, sticky="ew")
 
@@ -986,26 +1056,26 @@ def create_ui():
     app.mainloop()
 
 
-
 # * Main Initialization ---
 
 if __name__ == "__main__":
-    # Set stdout encoding to UTF-8
-    sys.stdout.reconfigure(encoding='utf-8')
+    
     config = load_config() 
     bulk_txt = config.get("bulk_txt", "bulk_import.txt")
 
-    tv, movies = plex_setup()
+    # Variable to track GUI mode
+    gui_mode = False
 
     # ! Check for command-line arguments
     if len(sys.argv) > 1:
         command = sys.argv[1].lower()
 
-        # ? Launch the GUI
+        # Launch the GUI
         if command == 'gui':
+            gui_mode = True
             create_ui()
 
-        # ? Run bulk import
+        # Run bulk import
         elif command == 'bulk':
             if len(sys.argv) > 2:
                 file_path = sys.argv[2]
@@ -1018,23 +1088,13 @@ if __name__ == "__main__":
         elif "/user/" in command:
             scrape_entire_user(command)
         else:
-            set_posters(command, tv, movies)
+            tv, movies = plex_setup(gui_mode)  # Pass gui_mode here
+            set_posters(command, tv, movies, gui_mode)
 
-    # ! CLI-based user input loop (fallback if no arguments were provided)
+    # If no command-line arguments, set GUI mode to True by default
     else:
-        while True:
-            user_input = input("Enter a ThePosterDB set (or user) or a MediUX set URL, or 'gui' to launch UI: ")
+        gui_mode = True
+        create_ui()
 
-            if user_input.lower() == 'stop':
-                print("Stopping...")
-                break
-            elif user_input.lower() == 'gui':
-                create_ui()
-                break
-            elif user_input.lower() == 'bulk':
-                file_path = input("Enter the path to the .txt file: ")
-                parse_cli_urls(file_path, tv, movies)
-            elif "/user/" in user_input.lower():
-                scrape_entire_user(user_input)
-            else:
-                set_posters(user_input, tv, movies)
+    # If we reach this part of the code, we may be falling back to CLI logic if GUI is not launched
+    tv, movies = plex_setup(gui_mode)

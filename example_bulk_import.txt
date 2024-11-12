@@ -1,13 +1,28 @@
-# Shows
-// Mr. & Mrs. Smith
-https://mediux.pro/sets/9242
-// Star Wars: Andor
-https://mediux.pro/sets/7720
+# bulk_import.txt file with just URLs on separate lines.
+# You CAN comment with "#" and "//" if you desire!
 
-# Movie Collections
+# --- Movies ---------------------------------------------
+
 // The Dark Knight Collection
 https://theposterdb.com/set/13035
 
-# NOTE: all of the commenting is completely unnecessary. 
-# A .txt file with just URLs on separate lines will do just fine.
-# This is just to show that you CAN comment with "#" and "//" if you desire!
+// Pirates of the Caribbean:
+https://mediux.pro/sets/12816
+
+// The Terminator
+https://mediux.pro/sets/10551
+
+
+# --- TV Shows -----------------------------------------
+
+// Futurama
+https://mediux.pro/sets/21200
+https://mediux.pro/sets/1993
+
+// Bob's Burgers
+https://mediux.pro/sets/208
+https://mediux.pro/sets/27633
+
+// Archer
+https://mediux.pro/sets/10988
+https://mediux.pro/sets/4394

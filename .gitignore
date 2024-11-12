@@ -1,4 +1,5 @@
 config.json
 __pycache__
 tempCodeRunnerFile.py
-bulk_import.txt
+build/
+!dist/*.zip
