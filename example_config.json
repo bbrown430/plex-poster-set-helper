@@ -1,7 +1,17 @@
 {
     "base_url": "",
     "token": "",
-    "tv_library": "TV Shows",
-    "movie_library": "Movies",
-    "mediux_filters": ["title_card", "background", "season_cover", "show_cover"]
+    "tv_library": [
+        "TV Shows",
+        "Anime"
+    ],
+    "movie_library": [
+        "Movies"
+    ],
+    "mediux_filters": [
+        "title_card",
+        "background",
+        "season_cover",
+        "show_cover"
+    ]
 }
