@@ -780,13 +780,22 @@ def process_scrape_url(url):
     '''Process the URL scrape.'''
     try:
         tv, movies = plex_setup()
-        soup = cook_soup(url)
 
+        # Check if plex_setup returned valid values
+        if tv is None or movies is None:
+            update_status("Plex setup incomplete. Please configure your settings.", color="red")
+            return
+
+        soup = cook_soup(url)
         update_status(f"Scraping: {url}", color="#E5A00D")
+        
+        # Proceed with setting posters
         set_posters(url, tv, movies)
         update_status(f"Posters successfully set for: {url}", color="#E5A00D")
+
     except Exception as e:
         update_status(f"Error: {e}", color="red")
+
     finally:
         app.after(0, lambda: [
             scrape_button.configure(state="normal"),
@@ -794,10 +803,18 @@ def process_scrape_url(url):
             bulk_import_button.configure(state="normal"),
         ])
 
+
 def process_bulk_import(valid_urls):
     '''Process the bulk import scrape.'''
     try:
+        # Perform plex setup
         tv, movies = plex_setup()
+
+        # Check if plex setup returned valid values
+        if tv is None or movies is None:
+            update_status("Plex setup incomplete. Please configure your settings.", color="red")
+            return
+
         for i, url in enumerate(valid_urls):
             status_text = f"Processing item {i+1} of {len(valid_urls)}: {url}"
             update_status(status_text, color="#E5A00D")
@@ -813,6 +830,7 @@ def process_bulk_import(valid_urls):
             clear_button.configure(state="normal"),
             bulk_import_button.configure(state="normal"),
         ])
+
 
 
 
