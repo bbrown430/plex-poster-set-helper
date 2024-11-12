@@ -35,7 +35,7 @@ plex-poster-set-helper is a tool to help upload sets of posters from ThePosterDB
 
 ## Usage
 
-Run `plex_poster_set_helper.py` in a terminal, using one of the following options:
+Run `python plex_poster_set_helper.py` in a terminal, using one of the following options:
 
 ### Command Line Arguments
 
@@ -44,19 +44,19 @@ The script supports various command-line arguments for flexible use.
 1. **Launch the GUI**  
    Use the `gui` argument to open the graphical user interface:
    ```bash
-   plex_poster_set_helper.py gui
+   python plex_poster_set_helper.py gui
    ```
 
 2. **Single Link Import**  
    Provide a link directly to set posters from a single MediUX or ThePosterDB set:
    ```bash
-   plex_poster_set_helper.py https://mediux.pro/sets/9242
+   python plex_poster_set_helper.py https://mediux.pro/sets/9242
    ```
 
 3. **Bulk Import**  
    Import multiple links from a `.txt` file using the `bulk` argument:
    ```bash
-   plex_poster_set_helper.py bulk example_bulk_import.txt
+   python plex_poster_set_helper.py bulk example_bulk_import.txt
    ```
 
    - The `.txt` file should contain one URL per line. Lines starting with `#` or `//` will be ignored as comments.
@@ -72,7 +72,7 @@ If no arguments are provided, the script will enter an interactive CLI mode wher
 
 ### GUI Mode
 
-The GUI provides a more user-friendly interface for managing poster uploads. Users can run the script with `plex_poster_set_helper.py gui` to launch the CustomTkinter-based interface, where they can:
+The GUI provides a more user-friendly interface for managing poster uploads. Users can run the script with `python plex_poster_set_helper.py gui` to launch the CustomTkinter-based interface, where they can:
 - Easily enter single or bulk URLs.
 - View progress, status updates, and more in an intuitive layout.
 
