@@ -66,13 +66,6 @@ The script supports various command-line arguments for flexible use.
 
    - **If no text file parameter is provided, it will use the default value from config.json for bulk_txt.**
 
-### Interactive CLI Mode
-
-If no arguments are provided, the script will enter an interactive CLI mode where you can:
-- Manually enter URLs or commands.
-- Type bulk to perform bulk import by providing a .txt file.
-- Type gui to launch the graphical interface directly.
-
 If no arguments are provided, it launches the GUI by default.
 
 ## Supported Features
