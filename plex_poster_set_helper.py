@@ -1,7 +1,8 @@
+
 import requests
 import math
+import os
 import sys
-import os.path
 import json
 from bs4 import BeautifulSoup
 from plexapi.server import PlexServer
@@ -10,13 +11,28 @@ import time
 import re
 import customtkinter as ctk
 import threading
-import os
+import xml.etree.ElementTree
+import atexit
 
-
+# Define your config dictionary
 config = {}
 
+# Global variable to store the Plex server connection
+plex = None
+
+def cleanup():
+    '''Function to handle cleanup tasks on exit.'''
+    if plex:
+        print("Closing Plex server connection...")
+    print("Exiting application. Cleanup complete.")
+
+# Register cleanup to run on exit
+atexit.register(cleanup)
 
 def plex_setup(gui_mode=False):
+    
+    global plex  # Declare this as global to access it in cleanup
+    
     # Check if config.json exists
     if os.path.exists("config.json"):
         try:
@@ -33,22 +49,27 @@ def plex_setup(gui_mode=False):
 
     # If running in GUI mode, allow the user to fill in missing fields
     if gui_mode:
-        # Skip setting up Plex if config isn't fully available yet
         if not base_url or not token or not tv_library or not movie_library:
             print("Plex setup is incomplete. Please set up your configuration in the GUI.")
-            return None, None  # Return early with None values indicating an incomplete setup
+            return None, None
 
-    # Validate the fields (still checking for necessary fields if we're not in GUI mode)
+    # Validate the fields
     if not base_url or not token:
-        sys.exit('Invalid Plex token or base URL. Please provide valid values in config.json or via the GUI.')
+        print('Invalid Plex token or base URL. Please provide valid values in config.json or via the GUI.')
+        return None, None
 
     try:
-        plex = PlexServer(base_url, token)
+        plex = PlexServer(base_url, token)  # Initialize the Plex server connection
     except requests.exceptions.RequestException:
         sys.exit('Unable to connect to Plex server. Please check the "base_url" in config.json or provide one.')
+        return None, None
     except plexapi.exceptions.Unauthorized:
         sys.exit('Invalid Plex token. Please check the "token" in config.json or provide one.')
-
+        return None, None
+    except xml.etree.ElementTree.ParseError:
+        print("Received invalid XML from Plex server. Check server connection.")
+        return None, None
+    
     if isinstance(tv_library, str):
         tv_library = [tv_library] 
     elif not isinstance(tv_library, list):
