@@ -89,8 +89,8 @@ Using these options, the tool will apply posters to the same media in all specif
 
 ### Bulk Import
 
-1. Enter bulk in the first input prompt in CLI mode, or use the bulk argument.
-2. Specify the path to a .txt file containing URLs. Each URL will be processed to set posters for the corresponding media.
+1. Use the bulk argument to import your default bulk_text file from config.json.
+2. Or, specify the path to a .txt file containing URLs as a second argument. Each URL will be processed to set posters for the corresponding media.
 
 ### Filters
 
