@@ -1095,45 +1095,91 @@ def create_ui():
     app.mainloop()
 
 
+
+# * Executable mode flag ---
+is_executable = False   # ! Set to true when building the executable with PyInstaller for it launches the GUI by default
+
+
+# * CLI-based user input loop (fallback if no arguments were provided) ---
+def interactive_cli_loop(tv, movies, bulk_txt):
+    while True:
+        print("\n--- Poster Scraper Interactive CLI ---")
+        print("1. Enter a ThePosterDB set URL, MediUX set URL, or ThePosterDB user URL")
+        print("2. Run Bulk Import from a file")
+        print("3. Launch GUI")
+        print("4. Stop")
+        
+        choice = input("Select an option (1-4): ")
+
+        if choice == '1':
+            url = input("Enter the URL: ")
+            if "/user/" in url.lower():
+                scrape_entire_user(url)
+            else:
+                set_posters(url, tv, movies)
+        
+        elif choice == '2':
+            file_path = input(f"Enter the path to the bulk import .txt file, or press [Enter] to use '{bulk_txt}': ")
+            file_path = file_path.strip() or bulk_txt
+            parse_cli_urls(file_path, tv, movies)
+        
+        elif choice == '3':
+            print("Launching GUI...")
+            create_ui()
+            break  # Exit CLI loop to launch GUI
+        
+        elif choice == '4':
+            print("Stopping...")
+            break
+        
+        else:
+            print("Invalid choice. Please select an option between 1 and 4.")
+
+
+
 # * Main Initialization ---
 
 if __name__ == "__main__":
-    
     config = load_config() 
     bulk_txt = config.get("bulk_txt", "bulk_import.txt")
-
-    # Variable to track GUI mode
-    gui_mode = False
-
-    # ! Check for command-line arguments
-    if len(sys.argv) > 1:
-        command = sys.argv[1].lower()
-
-        # Launch the GUI
-        if command == 'gui':
-            gui_mode = True
-            create_ui()
-
-        # Run bulk import
-        elif command == 'bulk':
-            if len(sys.argv) > 2:
-                file_path = sys.argv[2]
-                parse_cli_urls(file_path, tv, movies)
-            else:
-                print(f"Using bulk import file: {bulk_txt}")
-                parse_cli_urls(bulk_txt, tv, movies)
-
-        # Handle single URL or user URL
-        elif "/user/" in command:
-            scrape_entire_user(command)
-        else:
-            tv, movies = plex_setup(gui_mode)  # Pass gui_mode here
-            set_posters(command, tv, movies, gui_mode)
-
-    # If no command-line arguments, set GUI mode to True by default
-    else:
+    
+    # Check if we're running in executable mode
+    if is_executable:
+        # Executable mode: Launch GUI by default
         gui_mode = True
         create_ui()
+    else:
+        # CLI mode: Configure stdout encoding for Unicode handling
+        sys.stdout.reconfigure(encoding='utf-8')
+        
+        # Initialize tv, movies for CLI operations
+        tv, movies = plex_setup()
 
-    # If we reach this part of the code, we may be falling back to CLI logic if GUI is not launched
-    tv, movies = plex_setup(gui_mode)
+        # Check for command-line arguments
+        if len(sys.argv) > 1:
+            command = sys.argv[1].lower()
+
+            # Launch the GUI
+            if command == 'gui':
+                create_ui()
+
+            # Run bulk import
+            elif command == 'bulk':
+                if len(sys.argv) > 2:
+                    file_path = sys.argv[2]
+                    parse_cli_urls(file_path, tv, movies)
+                else:
+                    print(f"Using bulk import file: {bulk_txt}")
+                    parse_cli_urls(bulk_txt, tv, movies)
+
+            # Handle single URL or user URL
+            elif "/user/" in command:
+                scrape_entire_user(command)
+            else:
+                set_posters(command, tv, movies)
+
+        # If no command-line arguments, start the interactive CLI loop
+        else:
+            interactive_cli_loop(tv, movies, bulk_txt)
+                    
+                    

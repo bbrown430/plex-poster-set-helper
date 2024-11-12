@@ -59,16 +59,26 @@ The script supports various command-line arguments for flexible use.
    Import multiple links from a .txt file using the bulk argument:
    
    ```bash
-   python plex_poster_set_helper.py bulk example_bulk_import.txt
+   python plex_poster_set_helper.py bulk bulk_import.txt
    ```
 
    - The .txt file should contain one URL per line. Lines starting with # or // will be ignored as comments.
 
    - **If no text file parameter is provided, it will use the default value from config.json for bulk_txt.**
 
-If no arguments are provided, it launches the GUI by default.
 
 ## Supported Features
+
+### Interactive CLI Mode
+
+If no command-line arguments are provided, the script will enter an interactive CLI mode, where you can select from menu options to perform various tasks:
+
+- **Option 1:** Enter a ThePosterDB set URL, MediUX set URL, or ThePosterDB user URL to set posters for individual items or entire user collections.
+- **Option 2:** Run a bulk import by specifying the path to a `.txt` file containing multiple URLs (or simply press `Enter` to use the default bulk file defined in `config.json`).
+- **Option 3:** Launch the GUI for a graphical interface.
+- **Option 4:** Stop the program and exit.
+
+When using bulk import, if no file path is specified, the script will default to the file provided in the `config.json` under the `bulk_txt` key. Each URL in the `.txt` file should be on a separate line, and any lines starting with `#` or `//` will be ignored as comments.
 
 ### GUI Mode
 
@@ -106,16 +116,17 @@ In the `dist/` directory, you'll find the compiled executable for Windows: `Plex
 
 To rebuild the executable:
 
+*Note: Prior to building, set the `is_executable` boolean to true on line `1100` to ensure the executable launches in GUI Mode by default*
+
 1. Install PyInstaller if you don't have it already:
    ```bash
    pip install pyinstaller
    ```
 
-2. Use the provided spec file (`Plex Poster Set Helper.spec`) to build the executable:
+2. Use the provided spec file (`_PlexPosterSetHelper.spec`) to build the executable:
 
    ```bash
-   pyinstaller Plex Poster Set Helper.spec
+   pyinstaller _PlexPosterSetHelper.spec
    ```
 
 This will create the executable along with the necessary files.
-
