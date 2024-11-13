@@ -1,4 +1,3 @@
-
 import requests
 import math
 import os
@@ -18,7 +17,7 @@ from PIL import Image
 # Global variable to store the Plex server connection
 plex = None
 
-# Interactive CLI mode flag
+#! Interactive CLI mode flag
 interactive_cli = True   # Set to False when building the executable with PyInstaller for it launches the GUI by default
 
 config = {}
@@ -592,7 +591,6 @@ movie_library_entry = None
 url_entry = None
 status_label = None
 mediux_filters_text = None
-error_label = None
 bulk_import_button = None
 clear_button = None
 scrape_button = None
@@ -631,7 +629,7 @@ def update_status(message, color="white"):
 
 def update_error(message):
     '''Update the error label with a message.'''
-    app.after(0, lambda: error_label.configure(text=message, text_color="red"))      
+    app.after(0, lambda: status_label.configure(text=message, text_color="red"))      
       
 def clear_url():
     '''Clear the URL entry field.'''
@@ -721,31 +719,31 @@ def save_config():
 
 def load_and_update_ui():
     '''Load the configuration and update the UI fields.'''
-    config_data = load_config()
+    config = load_config()
     if base_url_entry is not None:
         base_url_entry.delete(0, ctk.END)
-        base_url_entry.insert(0, config_data.get("base_url", ""))
+        base_url_entry.insert(0, config.get("base_url", ""))
 
     if token_entry is not None:
         token_entry.delete(0, ctk.END)
-        token_entry.insert(0, config_data.get("token", ""))
+        token_entry.insert(0, config.get("token", ""))
 
     if bulk_txt_entry is not None:
         bulk_txt_entry.delete(0, ctk.END)
-        bulk_txt_entry.insert(0, config_data.get("bulk_txt", "bulk_import.txt"))
-        bulk_import_label = ctk.CTkLabel(app, text=f"Bulk Import File: {config_data.get('bulk_txt', 'bulk_import.txt')}")
+        bulk_txt_entry.insert(0, config.get("bulk_txt", "bulk_import.txt"))
+        bulk_import_label = ctk.CTkLabel(app, text=f"Bulk Import File: {config.get('bulk_txt', 'bulk_import.txt')}")
 
     if tv_library_text is not None:
         tv_library_text.delete(1.0, ctk.END)
-        tv_library_text.insert(ctk.END, ", ".join(config_data.get("tv_library", [])))
+        tv_library_text.insert(ctk.END, ", ".join(config.get("tv_library", [])))
 
     if movie_library_text is not None:
         movie_library_text.delete(1.0, ctk.END)
-        movie_library_text.insert(ctk.END, ", ".join(config_data.get("movie_library", [])))
+        movie_library_text.insert(ctk.END, ", ".join(config.get("movie_library", [])))
 
     if mediux_filters_text is not None:
         mediux_filters_text.delete(1.0, ctk.END)
-        mediux_filters_text.insert(ctk.END, ", ".join(config_data.get("mediux_filters", [])))
+        mediux_filters_text.insert(ctk.END, ", ".join(config.get("mediux_filters", [])))
 
     load_bulk_import_file()
         
@@ -902,46 +900,46 @@ def create_button(container, text, command, color=None, primary=False, height=35
     """Create a custom button with hover effects for a CustomTkinter GUI."""
     
     button_height = height 
-    button_fg = "#1D1E1E" if color else "#343434"
-    button_border = "#343434"
-    button_text_color = "#A9A9A9" 
+    button_fg = "#2A2B2B" if color else "#1C1E1E"
+    button_border = "#484848"
+    button_text_color = "#696969"
     plex_orange = "#E5A00D"
 
     if primary:
         button_fg = plex_orange 
-        button_border = plex_orange 
-        button_text_color = "#282a2d"
+        button_border = "#1C1E1E"
+        button_text_color = "#1C1E1E"
     
     button = ctk.CTkButton(
         container,
         text=text,
         command=command,
+        border_width=1,
         text_color=button_text_color, 
         fg_color=button_fg,
         border_color=button_border, 
-        border_width=1,
         hover_color="#333333", 
-        font=('Arial', 12, "bold"),
         width=80,
-        height=button_height
+        height=button_height,
+        font=("Roboto", 13, "bold"),
     )
     
     def on_enter(event):
         """Change button appearance when mouse enters."""
         if color:
-            button.configure(fg_color="#343434", text_color=color, border_color=color)
+            button.configure(fg_color="#2A2B2B", text_color=lighten_color(color, 0.2), border_color=lighten_color(color, 0.38))
         else:
-            button.configure(fg_color="#343434", text_color=plex_orange, border_color=plex_orange)
+            button.configure(fg_color="#1C1E1E", text_color=plex_orange, border_color=plex_orange)
 
     def on_leave(event):
         """Reset button appearance when mouse leaves."""
         if color:
-            button.configure(fg_color="#1D1E1E", text_color="#A9A9A9", border_color="#343434")
+            button.configure(fg_color="#2A2B2B", text_color="#696969", border_color=button_border)
         else:
             if primary:
-                button.configure(fg_color=plex_orange, text_color="#343434", border_color=plex_orange)
+                button.configure(fg_color=plex_orange, text_color="#1C1E1E", border_color="#1C1E1E")
             else:
-                button.configure(fg_color="#343434", text_color="#A9A9A9", border_color="#343434")
+                button.configure(fg_color="#1C1E1E", text_color="#696969", border_color=button_border)
 
     button.bind("<Enter>", on_enter)
     button.bind("<Leave>", on_leave)
@@ -949,54 +947,75 @@ def create_button(container, text, command, color=None, primary=False, height=35
     return button
 
 
+def lighten_color(color, amount=0.5):
+    """Lighten a color by blending it with white."""
+    import re
+
+    # Convert hex color to RGB
+    hex_to_rgb = lambda c: tuple(int(c[i:i+2], 16) for i in (1, 3, 5))
+    r, g, b = hex_to_rgb(color)
+
+    # Blend with white by adding (1 - amount) of the difference to each color
+    r = int(r + (255 - r) * amount)
+    g = int(g + (255 - g) * amount)
+    b = int(b + (255 - b) * amount)
+
+    # Return the color back to hex format
+    return f"#{r:02x}{g:02x}{b:02x}"
+
 
 # * Main UI Creation function ---
 
 def create_ui():
     '''Create the main UI window.'''
-    global scrape_button, clear_button, mediux_filters_text, error_label, bulk_import_text, base_url_entry, token_entry, tv_library_entry, movie_library_entry, status_label, url_entry, app, bulk_import_button, tv_library_text, movie_library_text, bulk_txt_entry
+    global scrape_button, clear_button, mediux_filters_text, bulk_import_text, base_url_entry, token_entry, tv_library_entry, movie_library_entry, status_label, url_entry, app, bulk_import_button, tv_library_text, movie_library_text, bulk_txt_entry
 
     app = ctk.CTk()
     app.title("Plex Poster Upload Helper")
     app.geometry("850x600")
     app.iconbitmap(resource_path("icons/Plex.ico"))
-
+    app.configure(fg_color="#2A2B2B")
     def open_url(url):
         '''Open a URL in the default web browser.'''
         import webbrowser
         webbrowser.open(url)
 
 
-    #! Create a frame for the link bar
+    # ! Create a frame for the link bar --
     link_bar = ctk.CTkFrame(app, fg_color="transparent")
     link_bar.pack(fill="x", pady=5, padx=10)
+    
+    base_url = config.get("base_url", None)
+    target_url = base_url if base_url else "https://www.plex.tv"
 
     plex_icon = ctk.CTkImage(light_image=Image.open(resource_path("icons/Plex.ico")), size=(24, 24))
     plex_icon_image = Image.open(resource_path("icons/Plex.ico"))
 
-    base_url = config.get("base_url", None)
-    target_url = base_url if base_url else "https://www.plex.tv"
-
     icon_label = ctk.CTkLabel(link_bar, image=plex_icon, text="", anchor="w") 
     icon_label.pack(side="left", padx=0, pady=0)
+    url_text = base_url if base_url else "Plex Media Server"
+    url_label = ctk.CTkLabel(link_bar, text=url_text, anchor="w", font=("Roboto", 14), text_color="#696969")
+    url_label.pack(side="left", padx=(5, 10))
 
-    def on_enter(event):
-        """Change icon appearance on hover."""
+    def on_hover_enter(event):
         app.config(cursor="hand2")
-        rotated_image = plex_icon_image.rotate(15, expand=True) 
+        rotated_image = plex_icon_image.rotate(15, expand=True)
         rotated_ctk_icon = ctk.CTkImage(light_image=rotated_image, size=(24, 24))
         icon_label.configure(image=rotated_ctk_icon)
-    
-    def on_leave(event):
-        """Reset icon appearance when mouse leaves."""
+        
+    def on_hover_leave(event):
         app.config(cursor="")
         icon_label.configure(image=plex_icon)
 
-    icon_label.bind("<Enter>", on_enter)
-    icon_label.bind("<Leave>", on_leave)
-    icon_label.bind("<Button-1>", lambda event: open_url(target_url))
+    def on_click(event):
+        open_url(target_url)
 
-    # ? Links to Mediux and ThePosterDB
+    for widget in (icon_label, url_label):
+        widget.bind("<Enter>", on_hover_enter)
+        widget.bind("<Leave>", on_hover_leave)
+        widget.bind("<Button-1>", on_click)
+
+    #Links to Mediux and ThePosterDB
     mediux_button = create_button(
         link_bar, 
         text="MediUX.pro", 
@@ -1018,60 +1037,60 @@ def create_ui():
 
     #! Create Tabview
     tabview = ctk.CTkTabview(app)
-    tabview.pack(fill="both", expand=True, padx=5, pady=5)
+    tabview.pack(fill="both", expand=True, padx=10, pady=0)
 
     tabview.configure(
-        segmented_button_fg_color="#3C3C3C",
-        segmented_button_selected_color="#101010",
-        segmented_button_selected_hover_color="#040404",
-        segmented_button_unselected_color="#2F2F2F",
-        segmented_button_unselected_hover_color="#101111",
-        text_color="#A1A1A1",
+        fg_color="#2A2B2B",
+        segmented_button_fg_color="#1C1E1E",
+        segmented_button_selected_color="#2A2B2B",
+        segmented_button_selected_hover_color="#2A2B2B",
+        segmented_button_unselected_color="#1C1E1E",
+        segmented_button_unselected_hover_color="#1C1E1E",
+        text_color="#CECECE",
         text_color_disabled="#777777",
-        border_color="#606060",
+        border_color="#484848",
         border_width=1,
-        height=400,
     )
     
     #! Settings Tab --
     settings_tab = tabview.add("Settings")
-
+    
     settings_tab.grid_columnconfigure(0, weight=0)
     settings_tab.grid_columnconfigure(1, weight=1)
     
 
     # ? Form Fields for Settings Tab
-    base_url_label = ctk.CTkLabel(settings_tab, text="Plex Base URL:")
+    base_url_label = ctk.CTkLabel(settings_tab, text="Plex Base URL", text_color="#CECECE")
     base_url_label.grid(row=0, column=0, pady=5, padx=10, sticky="w")
-    base_url_entry = ctk.CTkEntry(settings_tab, placeholder_text="Enter Plex Base URL", fg_color="#1D1E1E", border_width=0)
+    base_url_entry = ctk.CTkEntry(settings_tab, placeholder_text="Enter Plex Base URL", fg_color="#1C1E1E", text_color="#A1A1A1", border_width=0)
     base_url_entry.grid(row=0, column=1, pady=5, padx=10, sticky="ew")
 
-    token_label = ctk.CTkLabel(settings_tab, text="Plex Token:")
+    token_label = ctk.CTkLabel(settings_tab, text="Plex Token", text_color="#CECECE")
     token_label.grid(row=1, column=0, pady=5, padx=10, sticky="w")
-    token_entry = ctk.CTkEntry(settings_tab, placeholder_text="Enter Plex Token", fg_color="#1D1E1E", border_width=0)
+    token_entry = ctk.CTkEntry(settings_tab, placeholder_text="Enter Plex Token", fg_color="#1C1E1E", text_color="#A1A1A1",  border_width=0)
     token_entry.grid(row=1, column=1, pady=5, padx=10, sticky="ew")
 
-    bulk_txt_label = ctk.CTkLabel(settings_tab, text="Bulk Import File:")
+    bulk_txt_label = ctk.CTkLabel(settings_tab, text="Bulk Import File", text_color="#CECECE")
     bulk_txt_label.grid(row=2, column=0, pady=5, padx=10, sticky="w")
-    bulk_txt_entry = ctk.CTkEntry(settings_tab, placeholder_text="Enter bulk import file path", fg_color="#1D1E1E", border_width=0)
+    bulk_txt_entry = ctk.CTkEntry(settings_tab, placeholder_text="Enter bulk import file path", fg_color="#1C1E1E", text_color="#A1A1A1",  border_width=0)
     bulk_txt_entry.grid(row=2, column=1, pady=5, padx=10, sticky="ew")
 
     # TV Library (multiline text field for multiple entries)
-    tv_library_label = ctk.CTkLabel(settings_tab, text="TV Library Names:")
+    tv_library_label = ctk.CTkLabel(settings_tab, text="TV Library Names", text_color="#CECECE")
     tv_library_label.grid(row=3, column=0, pady=5, padx=10, sticky="w")
-    tv_library_text = ctk.CTkTextbox(settings_tab, height=3, width=40)
+    tv_library_text = ctk.CTkTextbox(settings_tab, height=5, width=40, fg_color="#1C1E1E", text_color="#A1A1A1")
     tv_library_text.grid(row=3, column=1, pady=5, padx=10, sticky="ew")
 
     # Movie Library (multiline text field for multiple entries)
-    movie_library_label = ctk.CTkLabel(settings_tab, text="Movie Library Names:")
+    movie_library_label = ctk.CTkLabel(settings_tab, text="Movie Library Names", text_color="#CECECE")
     movie_library_label.grid(row=4, column=0, pady=5, padx=10, sticky="w")
-    movie_library_text = ctk.CTkTextbox(settings_tab, height=3, width=40)
+    movie_library_text = ctk.CTkTextbox(settings_tab, height=5, width=40, fg_color="#1C1E1E", text_color="#A1A1A1")
     movie_library_text.grid(row=4, column=1, pady=5, padx=10, sticky="ew")
 
     # Mediux Filters (multiline text field for multiple entries)
-    mediux_filters_label = ctk.CTkLabel(settings_tab, text="Mediux Filters:")
+    mediux_filters_label = ctk.CTkLabel(settings_tab, text="Mediux Filters", text_color="#CECECE")
     mediux_filters_label.grid(row=5, column=0, pady=5, padx=10, sticky="w")
-    mediux_filters_text = ctk.CTkTextbox(settings_tab, height=5, width=40)
+    mediux_filters_text = ctk.CTkTextbox(settings_tab, height=5, width=40, fg_color="#1C1E1E", text_color="#A1A1A1")
     mediux_filters_text.grid(row=5, column=1, pady=5, padx=10, sticky="ew")
 
     settings_tab.grid_rowconfigure(0, weight=0)
@@ -1083,9 +1102,9 @@ def create_ui():
     settings_tab.grid_rowconfigure(6, weight=1) 
 
     # ? Load and Save Buttons (Anchored to the bottom)
-    load_button = create_button(settings_tab, text="Load Config", command=load_and_update_ui)
-    load_button.grid(row=7, column=0, pady=5, padx=5, sticky="ew")
-    save_button = create_button(settings_tab, text="Save Config", command=save_config, primary=True)
+    load_button = create_button(settings_tab, text="Reload", command=load_and_update_ui)
+    load_button.grid(row=7, column=0, pady=5, padx=5, ipadx=30, sticky="ew")
+    save_button = create_button(settings_tab, text="Save", command=save_config, primary=True)
     save_button.grid(row=7, column=1, pady=5, padx=5, sticky="ew")
 
     settings_tab.grid_rowconfigure(7, weight=0, minsize=40)
@@ -1098,14 +1117,15 @@ def create_ui():
     bulk_import_tab.grid_columnconfigure(1, weight=3) 
     bulk_import_tab.grid_columnconfigure(2, weight=0) 
 
-    bulk_import_label = ctk.CTkLabel(bulk_import_tab, text=f"Bulk Import Text:")
-    bulk_import_label.grid(row=0, column=0, pady=5, padx=10, sticky="w")
+    # bulk_import_label = ctk.CTkLabel(bulk_import_tab, text=f"Bulk Import Text", text_color="#CECECE")
+    # bulk_import_label.grid(row=0, column=0, pady=5, padx=10, sticky="w")
     bulk_import_text = ctk.CTkTextbox(
         bulk_import_tab,
         height=15,
         wrap="none",
         state="normal",
-        fg_color="#1D1E1E", 
+        fg_color="#1C1E1E", 
+        text_color="#A1A1A1",
     )
     bulk_import_text.grid(row=1, column=0, padx=10, pady=5, sticky="nsew", columnspan=2)
 
@@ -1115,7 +1135,7 @@ def create_ui():
 
     # Button row: Load, Save, Run buttons
     load_bulk_button = create_button(bulk_import_tab, text="Reload", command=load_bulk_import_file)
-    load_bulk_button.grid(row=2, column=0, pady=5, padx=5, sticky="ew") 
+    load_bulk_button.grid(row=2, column=0, pady=5, padx=5, ipadx=30, sticky="ew") 
 
     save_bulk_button = create_button(bulk_import_tab, text="Save", command=save_bulk_import_file)
     save_bulk_button.grid(row=2, column=1, pady=5, padx=5, sticky="ew", columnspan=2) 
@@ -1131,29 +1151,30 @@ def create_ui():
     poster_scrape_tab.grid_columnconfigure(1, weight=1)
     poster_scrape_tab.grid_columnconfigure(2, weight=0)
 
-    # URL entry field
-    url_label = ctk.CTkLabel(poster_scrape_tab, text="Poster Scrape URL:")
-    url_label.grid(row=0, column=0, pady=5, padx=5, sticky="w")
-    url_entry = ctk.CTkEntry(poster_scrape_tab, placeholder_text="Enter URL for scraping posters", fg_color="#1D1E1E", border_width=0)
-    url_entry.grid(row=0, column=1, pady=5, padx=5, sticky="ew")
-
-    # Buttons: Scrape and Clear
-    clear_button = create_button(poster_scrape_tab, text="Clear", command=clear_url)
-    clear_button.grid(row=1, column=0, pady=5, padx=5, sticky="ew")
-
-    scrape_button = create_button(poster_scrape_tab, text="Scrape and Set Posters", command=run_url_scrape_thread, primary=True)
-    scrape_button.grid(row=1, column=1, pady=5, padx=5, sticky="ew", columnspan=2)
-
-    poster_scrape_tab.grid_rowconfigure(0, weight=1)
+    poster_scrape_tab.grid_rowconfigure(0, weight=0)
     poster_scrape_tab.grid_rowconfigure(1, weight=0)
+    poster_scrape_tab.grid_rowconfigure(2, weight=1) 
+    poster_scrape_tab.grid_rowconfigure(3, weight=0) 
+
+    url_label = ctk.CTkLabel(poster_scrape_tab, text="Poster Scrape URL", text_color="#CECECE")
+    url_label.grid(row=0, column=0, columnspan=2, pady=5, padx=5, sticky="w")
+
+    url_entry = ctk.CTkEntry(poster_scrape_tab, placeholder_text="Enter URL for scraping posters", fg_color="#1C1E1E", text_color="#A1A1A1", border_width=0, height=40)
+    url_entry.grid(row=1, column=0, columnspan=2, pady=5, padx=5, sticky="ew")
+
+    clear_button = create_button(poster_scrape_tab, text="Clear", command=clear_url)
+    clear_button.grid(row=3, column=0, pady=5, padx=5, ipadx=30, sticky="ew")
+
+    scrape_button = create_button(poster_scrape_tab, text="Run URL Scrape", command=run_url_scrape_thread, primary=True)
+    scrape_button.grid(row=3, column=1, pady=5, padx=5, sticky="ew", columnspan=2)
+
+    poster_scrape_tab.grid_rowconfigure(2, weight=1)
 
 
     #! Status and Error Labels --
     status_label = ctk.CTkLabel(app, text="", text_color="#E5A00D")
     status_label.pack(side="bottom", fill="x", pady=(5))
 
-    error_label = ctk.CTkLabel(app, text="", text_color="red")
-    error_label.pack(side="bottom", fill="x", pady=5)
 
     #! Load configuration and bulk import data at start, set default tab
     load_and_update_ui()
