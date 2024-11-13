@@ -380,15 +380,14 @@ def check_mediux_filter(mediux_filters, filter):
 def scrape_mediux(soup):
     base_url = "https://mediux.pro/_next/image?url=https%3A%2F%2Fapi.mediux.pro%2Fassets%2F"
     quality_suffix = "&w=3840&q=80"
-    
     scripts = soup.find_all('script')
-    
-
     media_type = None
     showposters = []
     movieposters = []
     collectionposters = []
     mediux_filters = get_mediux_filters()
+    year = 0    # Default year value
+    title = "Untitled" # Default title value
         
     for script in scripts:
         if 'files' in script.text:
