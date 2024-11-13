@@ -940,28 +940,23 @@ def create_button(container, text, command, color=None, primary=False, height=35
                 button.configure(fg_color=plex_orange, text_color="#1C1E1E", border_color="#1C1E1E")
             else:
                 button.configure(fg_color="#1C1E1E", text_color="#696969", border_color=button_border)
+                
+    def lighten_color(color, amount=0.5):
+        """Lighten a color by blending it with white."""
+        hex_to_rgb = lambda c: tuple(int(c[i:i+2], 16) for i in (1, 3, 5))
+        r, g, b = hex_to_rgb(color)
+            
+        r = int(r + (255 - r) * amount)
+        g = int(g + (255 - g) * amount)
+        b = int(b + (255 - b) * amount)
+
+        return f"#{r:02x}{g:02x}{b:02x}"
 
     button.bind("<Enter>", on_enter)
     button.bind("<Leave>", on_leave)
     
     return button
 
-
-def lighten_color(color, amount=0.5):
-    """Lighten a color by blending it with white."""
-    import re
-
-    # Convert hex color to RGB
-    hex_to_rgb = lambda c: tuple(int(c[i:i+2], 16) for i in (1, 3, 5))
-    r, g, b = hex_to_rgb(color)
-
-    # Blend with white by adding (1 - amount) of the difference to each color
-    r = int(r + (255 - r) * amount)
-    g = int(g + (255 - g) * amount)
-    b = int(b + (255 - b) * amount)
-
-    # Return the color back to hex format
-    return f"#{r:02x}{g:02x}{b:02x}"
 
 
 # * Main UI Creation function ---
@@ -985,6 +980,7 @@ def create_ui():
     link_bar = ctk.CTkFrame(app, fg_color="transparent")
     link_bar.pack(fill="x", pady=5, padx=10)
     
+    # ? Link to Plex Media Server from the base URL
     base_url = config.get("base_url", None)
     target_url = base_url if base_url else "https://www.plex.tv"
 
@@ -1015,7 +1011,7 @@ def create_ui():
         widget.bind("<Leave>", on_hover_leave)
         widget.bind("<Button-1>", on_click)
 
-    #Links to Mediux and ThePosterDB
+    # ? Links to Mediux and ThePosterDB
     mediux_button = create_button(
         link_bar, 
         text="MediUX.pro", 
@@ -1035,7 +1031,7 @@ def create_ui():
     posterdb_button.pack(side="right", padx=5)
 
 
-    #! Create Tabview
+    #! Create Tabview --
     tabview = ctk.CTkTabview(app)
     tabview.pack(fill="both", expand=True, padx=10, pady=0)
 
@@ -1229,17 +1225,14 @@ if __name__ == "__main__":
     
     # Check if the script is running in interactive CLI mode or as an executable
     if not interactive_cli:
-        # Executable mode: Launch GUI by default
         gui_mode = True
         create_ui()
     else:
-        # CLI mode: Configure stdout encoding for Unicode handling
         sys.stdout.reconfigure(encoding='utf-8')
         
-        # Initialize tv, movies for CLI operations
         tv, movies = plex_setup()
 
-        # Check for command-line arguments
+        # ? Command-line arguments
         if len(sys.argv) > 1:
             command = sys.argv[1].lower()
 
@@ -1265,5 +1258,3 @@ if __name__ == "__main__":
         # If no command-line arguments, start the interactive CLI loop
         else:
             interactive_cli_loop(tv, movies, bulk_txt)
-                    
-                    
