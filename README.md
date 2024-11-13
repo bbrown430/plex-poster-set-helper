@@ -116,7 +116,7 @@ In the `dist/` directory, you'll find the compiled executable for Windows: `Plex
 
 To rebuild the executable:
 
-*Note: Prior to building, set the `is_executable` boolean to true on line `1100` to ensure the executable launches in GUI Mode by default*
+*Note: Prior to building, set the `interactive_cli` boolean to False on line `20` to ensure the executable launches in GUI Mode by default*
 
 1. Install PyInstaller if you don't have it already:
    ```bash

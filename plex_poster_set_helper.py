@@ -13,25 +13,30 @@ import customtkinter as ctk
 import threading
 import xml.etree.ElementTree
 import atexit
-
-# Define your config dictionary
-config = {}
+from PIL import Image
 
 # Global variable to store the Plex server connection
 plex = None
+
+# Interactive CLI mode flag
+interactive_cli = True   # Set to False when building the executable with PyInstaller for it launches the GUI by default
+
+config = {}
 
 def cleanup():
     '''Function to handle cleanup tasks on exit.'''
     if plex:
         print("Closing Plex server connection...")
     print("Exiting application. Cleanup complete.")
-
-# Register cleanup to run on exit
+    
 atexit.register(cleanup)
+
+
+#@ ---------------------- CORE FUNCTIONS ----------------------
 
 def plex_setup(gui_mode=False):
     
-    global plex  # Declare this as global to access it in cleanup
+    global plex
     
     # Check if config.json exists
     if os.path.exists("config.json"):
@@ -545,9 +550,8 @@ def parse_urls(bulk_import_list):
         if url and not url.startswith(("#", "//")):
             valid_urls.append(url)
 
-    # Process each valid URL, including user URLs
     for url in valid_urls:
-        if "/user/" in url:  # If it's a /user/ URL, scrape user data
+        if "/user/" in url: 
             print(f"Scraping user data from: {url}")
             scrape_entire_user(url)
         else:
@@ -556,6 +560,7 @@ def parse_urls(bulk_import_list):
             return valid_urls
 
     return valid_urls
+
 
 def parse_cli_urls(file_path, tv, movies):
     '''Parse the URLs from a file and scrape them.'''
@@ -575,7 +580,8 @@ def parse_cli_urls(file_path, tv, movies):
 
 
 
-#! ---------------------- GUI TESTING SECTION ----------------------
+#@ ---------------------- GUI FUNCTIONS ----------------------
+
 
 # * Variables for UI elements ---
 app = None
@@ -593,6 +599,7 @@ scrape_button = None
 tv_library_text = None
 movie_library_text = None
 bulk_txt_entry = None
+
 
 
 # * UI helper functions ---
@@ -627,19 +634,26 @@ def update_error(message):
     app.after(0, lambda: error_label.configure(text=message, text_color="red"))      
       
 def clear_url():
+    '''Clear the URL entry field.'''
     url_entry.delete(0, ctk.END)
     status_label.configure(text="URL cleared.", text_color="orange")      
      
-     
+def set_default_tab(tabview):
+    '''Set the default tab to the Settings tab.'''
+    plex_base_url = base_url_entry.get()
+    plex_token = token_entry.get()
+    
+    if plex_base_url and plex_token:
+        tabview.set("Bulk Import") 
+    else:
+        tabview.set("Settings")
+        
+      
       
 # * Configuration file I/O functions  ---
-    
-import os
-import json
 
 def load_config(config_path="config.json"):
     '''Load the configuration from the JSON file. If it doesn't exist, create it with default values.'''
-    # Default config values
     default_config = {
         "base_url": "",
         "token": "",
@@ -649,9 +663,9 @@ def load_config(config_path="config.json"):
         "mediux_filters": ["title_card", "background", "season_cover", "show_cover"]
     }
 
+    # Create the config.json file if it doesn't exist
     if not os.path.isfile(config_path):
         try:
-            # If the file doesn't exist, create it with default content
             with open(config_path, "w") as config_file:
                 json.dump(default_config, config_file, indent=4)
             print(f"Config file '{config_path}' created with default settings.")
@@ -659,7 +673,7 @@ def load_config(config_path="config.json"):
             update_error(f"Error creating config: {str(e)}")
             return {}
 
-    # Load the configuration from the file
+    # Load the configuration from the config.json file
     try:
         with open(config_path, "r") as config_file:
             config = json.load(config_file)
@@ -683,7 +697,6 @@ def load_config(config_path="config.json"):
         update_error(f"Error loading config: {str(e)}")
         return {}
 
-    
 def save_config():
     '''Save the configuration from the UI fields to the file.'''
     global config
@@ -697,7 +710,6 @@ def save_config():
         "mediux_filters": mediux_filters_text.get(1.0, ctk.END).strip().split(", "),
         "bulk_txt": bulk_txt_path
     }
-    
     try:
         with open("config.json", "w") as f:
             json.dump(config, f, indent=4)
@@ -803,7 +815,6 @@ def process_scrape_url(url):
             bulk_import_button.configure(state="normal"),
         ])
 
-
 def process_bulk_import(valid_urls):
     '''Process the bulk import scrape.'''
     try:
@@ -833,13 +844,12 @@ def process_bulk_import(valid_urls):
 
 
 
-
 # * Bulk import file I/O functions ---
 
 def load_bulk_import_file():
     '''Load the bulk import file into the text area.'''
     try:
-        # Set the file path relative to the executable directory
+        # Set the file path relative to the executable/script directory
         exe_path = get_exe_dir()
         bulk_txt_path = os.path.join(exe_path, config.get("bulk_txt", "bulk_import.txt"))
         
@@ -888,11 +898,11 @@ def save_bulk_import_file():
 
 # * Button Creation ---
 
-def create_button(container, text, command, primary=False):
+def create_button(container, text, command, color=None, primary=False, height=35):
     """Create a custom button with hover effects for a CustomTkinter GUI."""
     
-    button_height = 35 
-    button_fg = "#343434" 
+    button_height = height 
+    button_fg = "#1D1E1E" if color else "#343434"
     button_border = "#343434"
     button_text_color = "#A9A9A9" 
     plex_orange = "#E5A00D"
@@ -910,7 +920,7 @@ def create_button(container, text, command, primary=False):
         fg_color=button_fg,
         border_color=button_border, 
         border_width=1,
-        hover_color="#333333",
+        hover_color="#333333", 
         font=('Arial', 12, "bold"),
         width=80,
         height=button_height
@@ -918,18 +928,21 @@ def create_button(container, text, command, primary=False):
     
     def on_enter(event):
         """Change button appearance when mouse enters."""
-        if primary:
-            button.configure(fg_color="#282a2d", text_color=plex_orange, border_color=plex_orange)
+        if color:
+            button.configure(fg_color="#343434", text_color=color, border_color=color)
         else:
-            button.configure(text_color=plex_orange, border_color=plex_orange)
-    
+            button.configure(fg_color="#343434", text_color=plex_orange, border_color=plex_orange)
+
     def on_leave(event):
         """Reset button appearance when mouse leaves."""
-        if primary:
-            button.configure(fg_color=plex_orange, text_color="#282a2d", border_color=plex_orange)
+        if color:
+            button.configure(fg_color="#1D1E1E", text_color="#A9A9A9", border_color="#343434")
         else:
-            button.configure(text_color="#A9A9A9", border_color="#343434")
-    
+            if primary:
+                button.configure(fg_color=plex_orange, text_color="#343434", border_color=plex_orange)
+            else:
+                button.configure(fg_color="#343434", text_color="#A9A9A9", border_color="#343434")
+
     button.bind("<Enter>", on_enter)
     button.bind("<Leave>", on_leave)
     
@@ -945,8 +958,62 @@ def create_ui():
 
     app = ctk.CTk()
     app.title("Plex Poster Upload Helper")
-    app.geometry("800x500")
+    app.geometry("850x600")
     app.iconbitmap(resource_path("icons/Plex.ico"))
+
+    def open_url(url):
+        '''Open a URL in the default web browser.'''
+        import webbrowser
+        webbrowser.open(url)
+
+
+    #! Create a frame for the link bar
+    link_bar = ctk.CTkFrame(app, fg_color="transparent")
+    link_bar.pack(fill="x", pady=5, padx=10)
+
+    plex_icon = ctk.CTkImage(light_image=Image.open(resource_path("icons/Plex.ico")), size=(24, 24))
+    plex_icon_image = Image.open(resource_path("icons/Plex.ico"))
+
+    base_url = config.get("base_url", None)
+    target_url = base_url if base_url else "https://www.plex.tv"
+
+    icon_label = ctk.CTkLabel(link_bar, image=plex_icon, text="", anchor="w") 
+    icon_label.pack(side="left", padx=0, pady=0)
+
+    def on_enter(event):
+        """Change icon appearance on hover."""
+        app.config(cursor="hand2")
+        rotated_image = plex_icon_image.rotate(15, expand=True) 
+        rotated_ctk_icon = ctk.CTkImage(light_image=rotated_image, size=(24, 24))
+        icon_label.configure(image=rotated_ctk_icon)
+    
+    def on_leave(event):
+        """Reset icon appearance when mouse leaves."""
+        app.config(cursor="")
+        icon_label.configure(image=plex_icon)
+
+    icon_label.bind("<Enter>", on_enter)
+    icon_label.bind("<Leave>", on_leave)
+    icon_label.bind("<Button-1>", lambda event: open_url(target_url))
+
+    # ? Links to Mediux and ThePosterDB
+    mediux_button = create_button(
+        link_bar, 
+        text="MediUX.pro", 
+        command=lambda: open_url("https://mediux.pro"),
+        color="#945af2",
+        height=30
+    )
+    mediux_button.pack(side="right", padx=5)
+
+    posterdb_button = create_button(
+        link_bar, 
+        text="ThePosterDB", 
+        command=lambda: open_url("https://theposterdb.com"),
+        color="#FA6940",
+        height=30
+    )
+    posterdb_button.pack(side="right", padx=5)
 
 
     #! Create Tabview
@@ -965,7 +1032,6 @@ def create_ui():
         border_width=1,
         height=400,
     )
-    
     
     #! Settings Tab --
     settings_tab = tabview.add("Settings")
@@ -1032,7 +1098,7 @@ def create_ui():
     bulk_import_tab.grid_columnconfigure(1, weight=3) 
     bulk_import_tab.grid_columnconfigure(2, weight=0) 
 
-    bulk_import_label = ctk.CTkLabel(bulk_import_tab, text=f"Bulk Import Text: {config.get('bulk_txt')}")
+    bulk_import_label = ctk.CTkLabel(bulk_import_tab, text=f"Bulk Import Text:")
     bulk_import_label.grid(row=0, column=0, pady=5, padx=10, sticky="w")
     bulk_import_text = ctk.CTkTextbox(
         bulk_import_tab,
@@ -1089,15 +1155,12 @@ def create_ui():
     error_label = ctk.CTkLabel(app, text="", text_color="red")
     error_label.pack(side="bottom", fill="x", pady=5)
 
-    #! Load configuration and bulk import data at start
+    #! Load configuration and bulk import data at start, set default tab
     load_and_update_ui()
     
+    set_default_tab(tabview) # default tab will be 'Settings' if base_url and token are not set, otherwise 'Bulk Import'
+    
     app.mainloop()
-
-
-
-# * Executable mode flag ---
-is_executable = False   # ! Set to true when building the executable with PyInstaller for it launches the GUI by default
 
 
 # * CLI-based user input loop (fallback if no arguments were provided) ---
@@ -1143,8 +1206,8 @@ if __name__ == "__main__":
     config = load_config() 
     bulk_txt = config.get("bulk_txt", "bulk_import.txt")
     
-    # Check if we're running in executable mode
-    if is_executable:
+    # Check if the script is running in interactive CLI mode or as an executable
+    if not interactive_cli:
         # Executable mode: Launch GUI by default
         gui_mode = True
         create_ui()
