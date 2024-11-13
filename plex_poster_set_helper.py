@@ -966,10 +966,13 @@ def create_ui():
     global scrape_button, clear_button, mediux_filters_text, bulk_import_text, base_url_entry, token_entry, tv_library_entry, movie_library_entry, status_label, url_entry, app, bulk_import_button, tv_library_text, movie_library_text, bulk_txt_entry
 
     app = ctk.CTk()
+    ctk.set_appearance_mode("dark")
+    
     app.title("Plex Poster Upload Helper")
     app.geometry("850x600")
     app.iconbitmap(resource_path("icons/Plex.ico"))
     app.configure(fg_color="#2A2B2B")
+    
     def open_url(url):
         '''Open a URL in the default web browser.'''
         import webbrowser
