@@ -14,13 +14,9 @@ import xml.etree.ElementTree
 import atexit
 from PIL import Image
 
-# Global variable to store the Plex server connection
-plex = None
 
 #! Interactive CLI mode flag
 interactive_cli = True   # Set to False when building the executable with PyInstaller for it launches the GUI by default
-
-config = {}
 
 def cleanup():
     '''Function to handle cleanup tasks on exit.'''
@@ -34,8 +30,8 @@ atexit.register(cleanup)
 #@ ---------------------- CORE FUNCTIONS ----------------------
 
 def plex_setup(gui_mode=False):
-    
     global plex
+    plex = None
     
     # Check if config.json exists
     if os.path.exists("config.json"):
@@ -45,38 +41,61 @@ def plex_setup(gui_mode=False):
             token = config.get("token", "")
             tv_library = config.get("tv_library", [])
             movie_library = config.get("movie_library", [])
-        except:
-            sys.exit("Error with config.json file. Please consult the readme.md.")
+        except Exception as e:
+            if gui_mode:
+                app.after(300, update_error, f"Error with config.json: {str(e)}")
+            else:
+                sys.exit("Error with config.json file. Please consult the readme.md.")
+            return None, None
     else:
         # No config file, skip setting up Plex for now
         base_url, token, tv_library, movie_library = "", "", [], []
 
-    # If running in GUI mode, allow the user to fill in missing fields
-    if gui_mode:
-        if not base_url or not token or not tv_library or not movie_library:
-            print("Plex setup is incomplete. Please set up your configuration in the GUI.")
-            return None, None
-
     # Validate the fields
     if not base_url or not token:
-        print('Invalid Plex token or base URL. Please provide valid values in config.json or via the GUI.')
+        if gui_mode:
+            app.after(100, update_error, "Invalid Plex token or base URL. Please provide valid values in config.json or via the GUI.")
+        else:
+            print('Invalid Plex token or base URL. Please provide valid values in config.json or via the GUI.')
         return None, None
 
     try:
         plex = PlexServer(base_url, token)  # Initialize the Plex server connection
-    except requests.exceptions.RequestException:
-        sys.exit('Unable to connect to Plex server. Please check the "base_url" in config.json or provide one.')
+    except requests.exceptions.RequestException as e:
+        # Handle network-related errors (e.g., unable to reach the server)
+        if gui_mode:
+            app.after(100, update_error, f"Unable to connect to Plex server: {str(e)}")
+        else:
+            sys.exit('Unable to connect to Plex server. Please check the "base_url" in config.json or provide one.')
         return None, None
-    except plexapi.exceptions.Unauthorized:
-        sys.exit('Invalid Plex token. Please check the "token" in config.json or provide one.')
+    except plexapi.exceptions.Unauthorized as e:
+        # Handle authentication-related errors (e.g., invalid token)
+        if gui_mode:
+            app.after(100, update_error, f"Invalid Plex token: {str(e)}")
+        else:
+            sys.exit('Invalid Plex token. Please check the "token" in config.json or provide one.')
         return None, None
-    except xml.etree.ElementTree.ParseError:
-        print("Received invalid XML from Plex server. Check server connection.")
+    except xml.etree.ElementTree.ParseError as e:
+        # Handle XML parsing errors (e.g., invalid XML response from Plex)
+        if gui_mode:
+            app.after(100, update_error, f"Received invalid XML from Plex server: {str(e)}")
+        else:
+            print("Received invalid XML from Plex server. Check server connection.")
         return None, None
-    
+    except Exception as e:
+        # Handle any other unexpected errors
+        if gui_mode:
+            app.after(100, update_error, f"Unexpected error: {str(e)}")
+        else:
+            sys.exit(f"Unexpected error: {str(e)}")
+        return None, None
+
+    # Continue with the setup (assuming plex server is successfully initialized)
     if isinstance(tv_library, str):
         tv_library = [tv_library] 
     elif not isinstance(tv_library, list):
+        if gui_mode:
+            app.after(100, update_error, "tv_library must be either a string or a list")
         sys.exit("tv_library must be either a string or a list")
 
     tv = []
@@ -84,12 +103,17 @@ def plex_setup(gui_mode=False):
         try:
             plex_tv = plex.library.section(tv_lib)
             tv.append(plex_tv)
-        except plexapi.exceptions.NotFound:
-            sys.exit(f'TV library named "{tv_lib}" not found. Please check the "tv_library" in config.json or provide one.')
+        except plexapi.exceptions.NotFound as e:
+            if gui_mode:
+                app.after(100, update_error, f'TV library named "{tv_lib}" not found: {str(e)}')
+            else:
+                sys.exit(f'TV library named "{tv_lib}" not found. Please check the "tv_library" in config.json or provide one.')
 
     if isinstance(movie_library, str):
         movie_library = [movie_library] 
     elif not isinstance(movie_library, list):
+        if gui_mode:
+            app.after(100, update_error, "movie_library must be either a string or a list")
         sys.exit("movie_library must be either a string or a list")
 
     movies = []
@@ -97,15 +121,21 @@ def plex_setup(gui_mode=False):
         try:
             plex_movie = plex.library.section(movie_lib)
             movies.append(plex_movie)
-        except plexapi.exceptions.NotFound:
-            sys.exit(f'Movie library named "{movie_lib}" not found. Please check the "movie_library" in config.json or provide one.')
+        except plexapi.exceptions.NotFound as e:
+            if gui_mode:
+                app.after(100, update_error, f'Movie library named "{movie_lib}" not found: {str(e)}')
+            else:
+                sys.exit(f'Movie library named "{movie_lib}" not found. Please check the "movie_library" in config.json or provide one.')
 
     return tv, movies
 
 
+
 def cook_soup(url):  
     headers = { 
-               'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36', 'Sec-Ch-Ua-Mobile': '?0', 'Sec-Ch-Ua-Platform': 'Windows' 
+               'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36', 
+               'Sec-Ch-Ua-Mobile': '?0', 
+               'Sec-Ch-Ua-Platform': 'Windows' 
             }
 
     response = requests.get(url, headers=headers)
@@ -581,29 +611,15 @@ def parse_cli_urls(file_path, tv, movies):
 #@ ---------------------- GUI FUNCTIONS ----------------------
 
 
-# * Variables for UI elements ---
-app = None
-base_url_entry = None
-token_entry = None
-tv_library_entry = None
-movie_library_entry = None
-url_entry = None
-status_label = None
-mediux_filters_text = None
-bulk_import_button = None
-clear_button = None
-scrape_button = None
-tv_library_text = None
-movie_library_text = None
-bulk_txt_entry = None
-
-
 
 # * UI helper functions ---
 
 def get_exe_dir():
     """Get the directory of the executable or script file."""
-    return os.path.dirname(sys.executable) if getattr(sys, 'frozen', False) else os.path.dirname(__file__)
+    if getattr(sys, 'frozen', False):  
+        return os.path.dirname(sys.executable)  # Path to executable
+    else:
+        return os.path.dirname(__file__)  # Path to script file
 
 def resource_path(relative_path):
     """Get the absolute path to resource, works for dev and for PyInstaller bundle."""
@@ -627,8 +643,9 @@ def update_status(message, color="white"):
     app.after(0, lambda: status_label.configure(text=message, text_color=color))
 
 def update_error(message):
-    '''Update the error label with a message.'''
-    app.after(0, lambda: status_label.configure(text=message, text_color="red"))      
+    '''Update the error label with a message, with a small delay.'''
+    # app.after(500, lambda: status_label.configure(text=message, text_color="red"))
+    status_label.configure(text=message, text_color="red")
       
 def clear_url():
     '''Clear the URL entry field.'''
@@ -695,30 +712,35 @@ def load_config(config_path="config.json"):
         return {}
 
 def save_config():
-    '''Save the configuration from the UI fields to the file.'''
-    global config
-    bulk_txt_path = bulk_txt_entry.get()
+    '''Save the configuration from the UI fields to the file and update the in-memory config.'''
 
-    config = {
-        "base_url": base_url_entry.get(),
-        "token": token_entry.get(),
-        "tv_library": [item.strip() for item in tv_library_text.get(1.0, ctk.END).strip().split(",")],
-        "movie_library": [item.strip() for item in movie_library_text.get(1.0, ctk.END).strip().split(",")],
-        "mediux_filters": mediux_filters_text.get(1.0, ctk.END).strip().split(", "),
-        "bulk_txt": bulk_txt_path
+    new_config = {
+        "base_url": base_url_entry.get().strip(),
+        "token": token_entry.get().strip(),
+        "tv_library": [item.strip() for item in tv_library_text.get().strip().split(",")],
+        "movie_library": [item.strip() for item in movie_library_text.get().strip().split(",")],
+        "mediux_filters": mediux_filters_text.get().strip().split(", "), 
+        "bulk_txt": bulk_txt_entry.get().strip()
     }
+
     try:
         with open("config.json", "w") as f:
-            json.dump(config, f, indent=4)
+            json.dump(new_config, f, indent=4)
+            
+        # Update the in-memory config dictionary
+        global config
+        config = new_config
+        
+        load_and_update_ui()
+        
         update_status("Configuration saved successfully!", color="#E5A00D")
-
-        load_bulk_import_file()
     except Exception as e:
         update_status(f"Error saving config: {str(e)}", color="red")
 
 def load_and_update_ui():
     '''Load the configuration and update the UI fields.'''
     config = load_config()
+
     if base_url_entry is not None:
         base_url_entry.delete(0, ctk.END)
         base_url_entry.insert(0, config.get("base_url", ""))
@@ -730,23 +752,22 @@ def load_and_update_ui():
     if bulk_txt_entry is not None:
         bulk_txt_entry.delete(0, ctk.END)
         bulk_txt_entry.insert(0, config.get("bulk_txt", "bulk_import.txt"))
-        bulk_import_label = ctk.CTkLabel(app, text=f"Bulk Import File: {config.get('bulk_txt', 'bulk_import.txt')}")
 
     if tv_library_text is not None:
-        tv_library_text.delete(1.0, ctk.END)
-        tv_library_text.insert(ctk.END, ", ".join(config.get("tv_library", [])))
+        tv_library_text.delete(0, ctk.END) 
+        tv_library_text.insert(0, ", ".join(config.get("tv_library", [])))
 
     if movie_library_text is not None:
-        movie_library_text.delete(1.0, ctk.END)
-        movie_library_text.insert(ctk.END, ", ".join(config.get("movie_library", [])))
+        movie_library_text.delete(0, ctk.END)
+        movie_library_text.insert(0, ", ".join(config.get("movie_library", [])))
 
     if mediux_filters_text is not None:
-        mediux_filters_text.delete(1.0, ctk.END)
-        mediux_filters_text.insert(ctk.END, ", ".join(config.get("mediux_filters", [])))
-
-    load_bulk_import_file()
+        mediux_filters_text.delete(0, ctk.END) 
+        mediux_filters_text.insert(0, ", ".join(config.get("mediux_filters", []))) 
         
-             
+    load_bulk_import_file()
+    
+
 
 # * Threaded functions for scraping and setting posters ---  
 
@@ -788,9 +809,10 @@ def run_bulk_import_scrape_thread():
 def process_scrape_url(url):
     '''Process the URL scrape.'''
     try:
-        tv, movies = plex_setup()
+        # Perform plex setup
+        tv, movies = plex_setup(gui_mode=True)
 
-        # Check if plex_setup returned valid values
+        # Check if plex setup returned valid values
         if tv is None or movies is None:
             update_status("Plex setup incomplete. Please configure your settings.", color="red")
             return
@@ -815,8 +837,7 @@ def process_scrape_url(url):
 def process_bulk_import(valid_urls):
     '''Process the bulk import scrape.'''
     try:
-        # Perform plex setup
-        tv, movies = plex_setup()
+        tv, movies = plex_setup(gui_mode=True)
 
         # Check if plex setup returned valid values
         if tv is None or movies is None:
@@ -846,18 +867,19 @@ def process_bulk_import(valid_urls):
 def load_bulk_import_file():
     '''Load the bulk import file into the text area.'''
     try:
-        # Set the file path relative to the executable/script directory
-        exe_path = get_exe_dir()
-        bulk_txt_path = os.path.join(exe_path, config.get("bulk_txt", "bulk_import.txt"))
+        # Get the current bulk_txt value from the config
+        bulk_txt_path = config.get("bulk_txt", "bulk_import.txt")
         
-        # Check if the file exists
+        # Use get_exe_dir() to determine the correct path for both frozen and non-frozen cases
+        bulk_txt_path = os.path.join(get_exe_dir(), bulk_txt_path)
+
         if not os.path.exists(bulk_txt_path):
+            print(f"File does not exist: {bulk_txt_path}")
             bulk_import_text.delete(1.0, ctk.END)
             bulk_import_text.insert(ctk.END, "Bulk import file path is not set or file does not exist.")
             status_label.configure(text="Bulk import file path not set or file not found.", text_color="red")
             return
         
-        # Load and display file content if it exists
         with open(bulk_txt_path, "r", encoding="utf-8") as file:
             content = file.read()
         
@@ -871,17 +893,15 @@ def load_bulk_import_file():
         bulk_import_text.delete(1.0, ctk.END)
         bulk_import_text.insert(ctk.END, f"Error loading file: {str(e)}")
 
+
 def save_bulk_import_file():
     '''Save the bulk import text area content to a file relative to the executable location.'''
     try:
-        # Set the file path relative to the executable/script directory
         exe_path = get_exe_dir()
         bulk_txt_path = os.path.join(exe_path, config.get("bulk_txt", "bulk_import.txt"))
 
-        # Ensure the directory exists
         os.makedirs(os.path.dirname(bulk_txt_path), exist_ok=True)
 
-        # Write content to the file
         with open(bulk_txt_path, "w", encoding="utf-8") as file:
             file.write(bulk_import_text.get(1.0, ctk.END).strip())
 
@@ -901,13 +921,13 @@ def create_button(container, text, command, color=None, primary=False, height=35
     button_height = height 
     button_fg = "#2A2B2B" if color else "#1C1E1E"
     button_border = "#484848"
-    button_text_color = "#696969"
+    button_text_color = "#CECECE" if color else "#696969"
     plex_orange = "#E5A00D"
+    
 
     if primary:
         button_fg = plex_orange 
-        button_border = "#1C1E1E"
-        button_text_color = "#1C1E1E"
+        button_text_color, button_border = "#1C1E1E", "#1C1E1E"
     
     button = ctk.CTkButton(
         container,
@@ -926,14 +946,14 @@ def create_button(container, text, command, color=None, primary=False, height=35
     def on_enter(event):
         """Change button appearance when mouse enters."""
         if color:
-            button.configure(fg_color="#2A2B2B", text_color=lighten_color(color, 0.2), border_color=lighten_color(color, 0.38))
+            button.configure(fg_color="#2A2B2B", text_color=lighten_color(color, 0.3), border_color=lighten_color(color, 0.5))
         else:
             button.configure(fg_color="#1C1E1E", text_color=plex_orange, border_color=plex_orange)
 
     def on_leave(event):
         """Reset button appearance when mouse leaves."""
         if color:
-            button.configure(fg_color="#2A2B2B", text_color="#696969", border_color=button_border)
+            button.configure(fg_color="#2A2B2B", text_color="#CECECE", border_color=button_border)
         else:
             if primary:
                 button.configure(fg_color=plex_orange, text_color="#1C1E1E", border_color="#1C1E1E")
@@ -962,7 +982,7 @@ def create_button(container, text, command, color=None, primary=False, height=35
 
 def create_ui():
     '''Create the main UI window.'''
-    global scrape_button, clear_button, mediux_filters_text, bulk_import_text, base_url_entry, token_entry, tv_library_entry, movie_library_entry, status_label, url_entry, app, bulk_import_button, tv_library_text, movie_library_text, bulk_txt_entry
+    global app, scrape_button, clear_button, mediux_filters_text, bulk_import_text, base_url_entry, token_entry, tv_library_entry, movie_library_entry, status_label, url_entry, app, bulk_import_button, tv_library_text, movie_library_text, bulk_txt_entry
 
     app = ctk.CTk()
     ctk.set_appearance_mode("dark")
@@ -992,7 +1012,7 @@ def create_ui():
     icon_label = ctk.CTkLabel(link_bar, image=plex_icon, text="", anchor="w") 
     icon_label.pack(side="left", padx=0, pady=0)
     url_text = base_url if base_url else "Plex Media Server"
-    url_label = ctk.CTkLabel(link_bar, text=url_text, anchor="w", font=("Roboto", 14), text_color="#696969")
+    url_label = ctk.CTkLabel(link_bar, text=url_text, anchor="w", font=("Roboto", 14, "bold"), text_color="#CECECE")
     url_label.pack(side="left", padx=(5, 10))
 
     def on_hover_enter(event):
@@ -1050,46 +1070,66 @@ def create_ui():
         border_width=1,
     )
     
+    #! Form row label hover
+    LABEL_HOVER = "#878787"
+    def on_hover_in(label):
+        label.configure(text_color=LABEL_HOVER)
+
+    def on_hover_out(label):
+        label.configure(text_color="#696969") 
+    
     #! Settings Tab --
     settings_tab = tabview.add("Settings")
-    
     settings_tab.grid_columnconfigure(0, weight=0)
     settings_tab.grid_columnconfigure(1, weight=1)
-    
 
-    # ? Form Fields for Settings Tab
-    base_url_label = ctk.CTkLabel(settings_tab, text="Plex Base URL", text_color="#CECECE")
+    # Plex Base URL
+    base_url_label = ctk.CTkLabel(settings_tab, text="Plex Base URL", text_color="#696969", font=("Roboto", 15))
     base_url_label.grid(row=0, column=0, pady=5, padx=10, sticky="w")
-    base_url_entry = ctk.CTkEntry(settings_tab, placeholder_text="Enter Plex Base URL", fg_color="#1C1E1E", text_color="#A1A1A1", border_width=0)
+    base_url_entry = ctk.CTkEntry(settings_tab, placeholder_text="Enter Plex Base URL", fg_color="#1C1E1E", text_color="#A1A1A1", border_width=0, height=40)
     base_url_entry.grid(row=0, column=1, pady=5, padx=10, sticky="ew")
+    base_url_entry.bind("<Enter>", lambda event: on_hover_in(base_url_label))
+    base_url_entry.bind("<Leave>", lambda event: on_hover_out(base_url_label))
 
-    token_label = ctk.CTkLabel(settings_tab, text="Plex Token", text_color="#CECECE")
+    # Plex Token
+    token_label = ctk.CTkLabel(settings_tab, text="Plex Token", text_color="#696969", font=("Roboto", 15))
     token_label.grid(row=1, column=0, pady=5, padx=10, sticky="w")
-    token_entry = ctk.CTkEntry(settings_tab, placeholder_text="Enter Plex Token", fg_color="#1C1E1E", text_color="#A1A1A1",  border_width=0)
+    token_entry = ctk.CTkEntry(settings_tab, placeholder_text="Enter Plex Token", fg_color="#1C1E1E", text_color="#A1A1A1", border_width=0, height=40)
     token_entry.grid(row=1, column=1, pady=5, padx=10, sticky="ew")
+    token_entry.bind("<Enter>", lambda event: on_hover_in(token_label))
+    token_entry.bind("<Leave>", lambda event: on_hover_out(token_label))
 
-    bulk_txt_label = ctk.CTkLabel(settings_tab, text="Bulk Import File", text_color="#CECECE")
+    # Bulk Import File
+    bulk_txt_label = ctk.CTkLabel(settings_tab, text="Bulk Import File", text_color="#696969", font=("Roboto", 15))
     bulk_txt_label.grid(row=2, column=0, pady=5, padx=10, sticky="w")
-    bulk_txt_entry = ctk.CTkEntry(settings_tab, placeholder_text="Enter bulk import file path", fg_color="#1C1E1E", text_color="#A1A1A1",  border_width=0)
+    bulk_txt_entry = ctk.CTkEntry(settings_tab, placeholder_text="Enter bulk import file path", fg_color="#1C1E1E", text_color="#A1A1A1", border_width=0, height=40)
     bulk_txt_entry.grid(row=2, column=1, pady=5, padx=10, sticky="ew")
+    bulk_txt_entry.bind("<Enter>", lambda event: on_hover_in(bulk_txt_label))
+    bulk_txt_entry.bind("<Leave>", lambda event: on_hover_out(bulk_txt_label))
 
-    # TV Library (multiline text field for multiple entries)
-    tv_library_label = ctk.CTkLabel(settings_tab, text="TV Library Names", text_color="#CECECE")
+    # TV Library Names
+    tv_library_label = ctk.CTkLabel(settings_tab, text="TV Library Names", text_color="#696969", font=("Roboto", 15))
     tv_library_label.grid(row=3, column=0, pady=5, padx=10, sticky="w")
-    tv_library_text = ctk.CTkTextbox(settings_tab, height=5, width=40, fg_color="#1C1E1E", text_color="#A1A1A1")
+    tv_library_text = ctk.CTkEntry(settings_tab, fg_color="#1C1E1E", text_color="#A1A1A1", border_width=0, height=40)
     tv_library_text.grid(row=3, column=1, pady=5, padx=10, sticky="ew")
+    tv_library_text.bind("<Enter>", lambda event: on_hover_in(tv_library_label))
+    tv_library_text.bind("<Leave>", lambda event: on_hover_out(tv_library_label))
 
-    # Movie Library (multiline text field for multiple entries)
-    movie_library_label = ctk.CTkLabel(settings_tab, text="Movie Library Names", text_color="#CECECE")
+    # Movie Library Names
+    movie_library_label = ctk.CTkLabel(settings_tab, text="Movie Library Names", text_color="#696969", font=("Roboto", 15))
     movie_library_label.grid(row=4, column=0, pady=5, padx=10, sticky="w")
-    movie_library_text = ctk.CTkTextbox(settings_tab, height=5, width=40, fg_color="#1C1E1E", text_color="#A1A1A1")
+    movie_library_text = ctk.CTkEntry(settings_tab, fg_color="#1C1E1E", text_color="#A1A1A1", border_width=0, height=40)
     movie_library_text.grid(row=4, column=1, pady=5, padx=10, sticky="ew")
+    movie_library_text.bind("<Enter>", lambda event: on_hover_in(movie_library_label))
+    movie_library_text.bind("<Leave>", lambda event: on_hover_out(movie_library_label))
 
-    # Mediux Filters (multiline text field for multiple entries)
-    mediux_filters_label = ctk.CTkLabel(settings_tab, text="Mediux Filters", text_color="#CECECE")
+    # Mediux Filters
+    mediux_filters_label = ctk.CTkLabel(settings_tab, text="Mediux Filters", text_color="#696969", font=("Roboto", 15))
     mediux_filters_label.grid(row=5, column=0, pady=5, padx=10, sticky="w")
-    mediux_filters_text = ctk.CTkTextbox(settings_tab, height=5, width=40, fg_color="#1C1E1E", text_color="#A1A1A1")
+    mediux_filters_text = ctk.CTkEntry(settings_tab, fg_color="#1C1E1E", text_color="#A1A1A1", border_width=0, height=40)
     mediux_filters_text.grid(row=5, column=1, pady=5, padx=10, sticky="ew")
+    mediux_filters_text.bind("<Enter>", lambda event: on_hover_in(mediux_filters_label))
+    mediux_filters_text.bind("<Leave>", lambda event: on_hover_out(mediux_filters_label))
 
     settings_tab.grid_rowconfigure(0, weight=0)
     settings_tab.grid_rowconfigure(1, weight=0)
@@ -1124,6 +1164,7 @@ def create_ui():
         state="normal",
         fg_color="#1C1E1E", 
         text_color="#A1A1A1",
+        font=("Courier", 14)
     )
     bulk_import_text.grid(row=1, column=0, padx=10, pady=5, sticky="nsew", columnspan=2)
 
@@ -1142,7 +1183,7 @@ def create_ui():
     bulk_import_button.grid(row=3, column=0, pady=5, padx=5, sticky="ew", columnspan=3)
 
 
-    # ! Poster Scrape Tab --
+    #! Poster Scrape Tab --
     poster_scrape_tab = tabview.add("Poster Scrape")
 
     poster_scrape_tab.grid_columnconfigure(0, weight=0)
@@ -1154,11 +1195,13 @@ def create_ui():
     poster_scrape_tab.grid_rowconfigure(2, weight=1) 
     poster_scrape_tab.grid_rowconfigure(3, weight=0) 
 
-    url_label = ctk.CTkLabel(poster_scrape_tab, text="Poster Scrape URL", text_color="#CECECE")
+    url_label = ctk.CTkLabel(poster_scrape_tab, text="Enter a ThePosterDB set URL, MediUX set URL, or ThePosterDB user URL", text_color="#696969", font=("Roboto", 15))
     url_label.grid(row=0, column=0, columnspan=2, pady=5, padx=5, sticky="w")
 
-    url_entry = ctk.CTkEntry(poster_scrape_tab, placeholder_text="Enter URL for scraping posters", fg_color="#1C1E1E", text_color="#A1A1A1", border_width=0, height=40)
+    url_entry = ctk.CTkEntry(poster_scrape_tab, placeholder_text="e.g., https://mediux.pro/sets/6527", fg_color="#1C1E1E", text_color="#A1A1A1", border_width=0, height=40)
     url_entry.grid(row=1, column=0, columnspan=2, pady=5, padx=5, sticky="ew")
+    url_entry.bind("<Enter>", lambda event: on_hover_in(url_label))
+    url_entry.bind("<Leave>", lambda event: on_hover_out(url_label))
 
     clear_button = create_button(poster_scrape_tab, text="Clear", command=clear_url)
     clear_button.grid(row=3, column=0, pady=5, padx=5, ipadx=30, sticky="ew")
@@ -1176,6 +1219,7 @@ def create_ui():
 
     #! Load configuration and bulk import data at start, set default tab
     load_and_update_ui()
+    load_bulk_import_file()
     
     set_default_tab(tabview) # default tab will be 'Settings' if base_url and token are not set, otherwise 'Bulk Import'
     
@@ -1207,6 +1251,7 @@ def interactive_cli_loop(tv, movies, bulk_txt):
         
         elif choice == '3':
             print("Launching GUI...")
+            tv, movies = plex_setup(gui_mode=True)
             create_ui()
             break  # Exit CLI loop to launch GUI
         
@@ -1218,45 +1263,47 @@ def interactive_cli_loop(tv, movies, bulk_txt):
             print("Invalid choice. Please select an option between 1 and 4.")
 
 
-
 # * Main Initialization ---
-
 if __name__ == "__main__":
     config = load_config() 
     bulk_txt = config.get("bulk_txt", "bulk_import.txt")
     
-    # Check if the script is running in interactive CLI mode or as an executable
-    if not interactive_cli:
-        gui_mode = True
-        create_ui()
-    else:
-        sys.stdout.reconfigure(encoding='utf-8')
-        
-        tv, movies = plex_setup()
+    # Check for CLI arguments regardless of interactive_cli flag
+    if len(sys.argv) > 1:
+        command = sys.argv[1].lower()
 
-        # ? Command-line arguments
-        if len(sys.argv) > 1:
-            command = sys.argv[1].lower()
+        # Handle command-line arguments
+        if command == 'gui':
+            create_ui()
+            tv, movies = plex_setup(gui_mode=True)
 
-            # Launch the GUI
-            if command == 'gui':
-                create_ui()
-
-            # Run bulk import
-            elif command == 'bulk':
-                if len(sys.argv) > 2:
-                    file_path = sys.argv[2]
-                    parse_cli_urls(file_path, tv, movies)
-                else:
-                    print(f"Using bulk import file: {bulk_txt}")
-                    parse_cli_urls(bulk_txt, tv, movies)
-
-            # Handle single URL or user URL
-            elif "/user/" in command:
-                scrape_entire_user(command)
+        elif command == 'bulk':
+            tv, movies = plex_setup(gui_mode=False)
+            if len(sys.argv) > 2:
+                file_path = sys.argv[2]
+                parse_cli_urls(file_path, tv, movies)
             else:
-                set_posters(command, tv, movies)
+                print(f"Using bulk import file: {bulk_txt}")
+                parse_cli_urls(bulk_txt, tv, movies)
 
-        # If no command-line arguments, start the interactive CLI loop
+        elif "/user/" in command:
+            scrape_entire_user(command)
         else:
+            tv, movies = plex_setup(gui_mode=False)
+            set_posters(command, tv, movies)
+    
+    else:
+        # If no CLI arguments, proceed with UI creation (if not in interactive CLI mode)
+        if not interactive_cli:
+            create_ui() 
+            tv, movies = plex_setup(gui_mode=True)
+        else:
+            sys.stdout.reconfigure(encoding='utf-8') 
+            gui_flag = (len(sys.argv) > 1 and sys.argv[1].lower() == 'gui')
+
+            # Perform CLI plex_setup if GUI flag is not present
+            if not gui_flag:
+                tv, movies = plex_setup(gui_mode=False)
+
+            # Handle interactive CLI
             interactive_cli_loop(tv, movies, bulk_txt)
