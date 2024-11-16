@@ -1234,33 +1234,43 @@ def interactive_cli_loop(tv, movies, bulk_txt):
         print("2. Run Bulk Import from a file")
         print("3. Launch GUI")
         print("4. Stop")
-        
+
         choice = input("Select an option (1-4): ")
 
         if choice == '1':
             url = input("Enter the URL: ")
-            if "/user/" in url.lower():
-                scrape_entire_user(url)
-            else:
-                set_posters(url, tv, movies)
-        
+            if check_libraries(tv, movies):
+                if "/user/" in url.lower():
+                    scrape_entire_user(url)
+                else:
+                    set_posters(url, tv, movies)
+
         elif choice == '2':
             file_path = input(f"Enter the path to the bulk import .txt file, or press [Enter] to use '{bulk_txt}': ")
             file_path = file_path.strip() or bulk_txt
-            parse_cli_urls(file_path, tv, movies)
-        
+            if check_libraries(tv, movies):
+                parse_cli_urls(file_path, tv, movies)
+
         elif choice == '3':
             print("Launching GUI...")
             tv, movies = plex_setup(gui_mode=True)
             create_ui()
             break  # Exit CLI loop to launch GUI
-        
+
         elif choice == '4':
             print("Stopping...")
             break
-        
+
         else:
             print("Invalid choice. Please select an option between 1 and 4.")
+
+
+def check_libraries(tv, movies):
+    if not tv:
+        print("No TV libraries initialized. Verify the 'tv_library' in config.json.")
+    if not movies:
+        print("No Movies libraries initialized. Verify the 'movie_library' in config.json.")
+    return bool(tv) and bool(movies)
 
 
 # * Main Initialization ---

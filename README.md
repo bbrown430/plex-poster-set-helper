@@ -71,6 +71,8 @@ The script supports various command-line arguments for flexible use.
 
 ### Interactive CLI Mode
 
+![GUI Overview](https://raw.githubusercontent.com/tonywied17/plex-poster-set-helper/refs/heads/main/assets/cli_menu.png)
+
 If no command-line arguments are provided, the script will enter an interactive CLI mode, where you can select from menu options to perform various tasks:
 
 - **Option 1:** Enter a ThePosterDB set URL, MediUX set URL, or ThePosterDB user URL to set posters for individual items or entire user collections.
@@ -81,6 +83,11 @@ If no command-line arguments are provided, the script will enter an interactive 
 When using bulk import, if no file path is specified, the script will default to the file provided in the `config.json` under the `bulk_txt` key. Each URL in the `.txt` file should be on a separate line, and any lines starting with `#` or `//` will be ignored as comments.
 
 ### GUI Mode
+
+![GUI Overview](https://raw.githubusercontent.com/tonywied17/plex-poster-set-helper/refs/heads/main/assets/gui_overview.png)
+![Bulk Import](https://raw.githubusercontent.com/tonywied17/plex-poster-set-helper/refs/heads/main/assets/bulk_import.png)
+![URL Scrape](https://raw.githubusercontent.com/tonywied17/plex-poster-set-helper/refs/heads/main/assets/url_scrape.png)
+
 
 The GUI provides a more user-friendly interface for managing poster uploads. Users can run the script with python plex_poster_set_helper.py gui to launch the CustomTkinter-based interface, where they can:
 - Easily enter single or bulk URLs.
