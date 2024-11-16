@@ -71,7 +71,7 @@ The script supports various command-line arguments for flexible use.
 
 ### Interactive CLI Mode
 
-![GUI Overview](https://raw.githubusercontent.com/tonywied17/plex-poster-set-helper/refs/heads/main/assets/cli_menu.png)
+![GUI Overview](https://raw.githubusercontent.com/tonywied17/plex-poster-set-helper/refs/heads/main/assets/cli_overview.png)
 
 If no command-line arguments are provided, the script will enter an interactive CLI mode, where you can select from menu options to perform various tasks:
 
