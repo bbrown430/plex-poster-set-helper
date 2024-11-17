@@ -9,6 +9,7 @@ import plexapi.exceptions
 import time
 import re
 import customtkinter as ctk
+import tkinter as tk
 import threading
 import xml.etree.ElementTree
 import atexit
@@ -16,15 +17,7 @@ from PIL import Image
 
 
 #! Interactive CLI mode flag
-interactive_cli = True   # Set to False when building the executable with PyInstaller for it launches the GUI by default
-
-def cleanup():
-    '''Function to handle cleanup tasks on exit.'''
-    if plex:
-        print("Closing Plex server connection...")
-    print("Exiting application. Cleanup complete.")
-    
-atexit.register(cleanup)
+interactive_cli = False   # Set to False when building the executable with PyInstaller for it launches the GUI by default
 
 
 #@ ---------------------- CORE FUNCTIONS ----------------------
@@ -606,7 +599,13 @@ def parse_cli_urls(file_path, tv, movies):
         print("File not found. Please enter a valid file path.")
 
 
-
+def cleanup():
+    '''Function to handle cleanup tasks on exit.'''
+    if plex:
+        print("Closing Plex server connection...")
+    print("Exiting application. Cleanup complete.")
+    
+atexit.register(cleanup)
 
 #@ ---------------------- GUI FUNCTIONS ----------------------
 
@@ -662,6 +661,26 @@ def set_default_tab(tabview):
     else:
         tabview.set("Settings")
         
+def bind_context_menu(widget):
+    '''Bind the right-click context menu to the widget.'''
+    widget.bind("<Button-3>", clear_placeholder_on_right_click)
+    widget.bind("<Control-1>", clear_placeholder_on_right_click)
+        
+def clear_placeholder_on_right_click(event):
+    """Clears placeholder text and sets focus before showing the context menu."""
+    widget = event.widget
+    if isinstance(widget, ctk.CTkEntry) and widget.get() == "":
+        widget.delete(0, tk.END) 
+    widget.focus() 
+    show_global_context_menu(event) 
+    
+def show_global_context_menu(event):
+    '''Show the global context menu at the cursor position.'''
+    widget = event.widget
+    global_context_menu.entryconfigure("Cut", command=lambda: widget.event_generate("<<Cut>>"))
+    global_context_menu.entryconfigure("Copy", command=lambda: widget.event_generate("<<Copy>>"))
+    global_context_menu.entryconfigure("Paste", command=lambda: widget.event_generate("<<Paste>>"))
+    global_context_menu.tk_popup(event.x_root, event.y_root)
       
       
 # * Configuration file I/O functions  ---
@@ -982,7 +1001,7 @@ def create_button(container, text, command, color=None, primary=False, height=35
 
 def create_ui():
     '''Create the main UI window.'''
-    global app, scrape_button, clear_button, mediux_filters_text, bulk_import_text, base_url_entry, token_entry, tv_library_entry, movie_library_entry, status_label, url_entry, app, bulk_import_button, tv_library_text, movie_library_text, bulk_txt_entry
+    global app, global_context_menu, scrape_button, clear_button, mediux_filters_text, bulk_import_text, base_url_entry, token_entry, status_label, url_entry, app, bulk_import_button, tv_library_text, movie_library_text, bulk_txt_entry
 
     app = ctk.CTk()
     ctk.set_appearance_mode("dark")
@@ -991,6 +1010,11 @@ def create_ui():
     app.geometry("850x600")
     app.iconbitmap(resource_path("icons/Plex.ico"))
     app.configure(fg_color="#2A2B2B")
+    
+    global_context_menu = tk.Menu(app, tearoff=0)
+    global_context_menu.add_command(label="Cut")
+    global_context_menu.add_command(label="Copy")
+    global_context_menu.add_command(label="Paste")
     
     def open_url(url):
         '''Open a URL in the default web browser.'''
@@ -1090,6 +1114,7 @@ def create_ui():
     base_url_entry.grid(row=0, column=1, pady=5, padx=10, sticky="ew")
     base_url_entry.bind("<Enter>", lambda event: on_hover_in(base_url_label))
     base_url_entry.bind("<Leave>", lambda event: on_hover_out(base_url_label))
+    bind_context_menu(base_url_entry)
 
     # Plex Token
     token_label = ctk.CTkLabel(settings_tab, text="Plex Token", text_color="#696969", font=("Roboto", 15))
@@ -1098,6 +1123,7 @@ def create_ui():
     token_entry.grid(row=1, column=1, pady=5, padx=10, sticky="ew")
     token_entry.bind("<Enter>", lambda event: on_hover_in(token_label))
     token_entry.bind("<Leave>", lambda event: on_hover_out(token_label))
+    bind_context_menu(token_entry)
 
     # Bulk Import File
     bulk_txt_label = ctk.CTkLabel(settings_tab, text="Bulk Import File", text_color="#696969", font=("Roboto", 15))
@@ -1106,6 +1132,7 @@ def create_ui():
     bulk_txt_entry.grid(row=2, column=1, pady=5, padx=10, sticky="ew")
     bulk_txt_entry.bind("<Enter>", lambda event: on_hover_in(bulk_txt_label))
     bulk_txt_entry.bind("<Leave>", lambda event: on_hover_out(bulk_txt_label))
+    bind_context_menu(bulk_txt_entry)
 
     # TV Library Names
     tv_library_label = ctk.CTkLabel(settings_tab, text="TV Library Names", text_color="#696969", font=("Roboto", 15))
@@ -1114,6 +1141,7 @@ def create_ui():
     tv_library_text.grid(row=3, column=1, pady=5, padx=10, sticky="ew")
     tv_library_text.bind("<Enter>", lambda event: on_hover_in(tv_library_label))
     tv_library_text.bind("<Leave>", lambda event: on_hover_out(tv_library_label))
+    bind_context_menu(tv_library_text)
 
     # Movie Library Names
     movie_library_label = ctk.CTkLabel(settings_tab, text="Movie Library Names", text_color="#696969", font=("Roboto", 15))
@@ -1122,6 +1150,7 @@ def create_ui():
     movie_library_text.grid(row=4, column=1, pady=5, padx=10, sticky="ew")
     movie_library_text.bind("<Enter>", lambda event: on_hover_in(movie_library_label))
     movie_library_text.bind("<Leave>", lambda event: on_hover_out(movie_library_label))
+    bind_context_menu(movie_library_text)
 
     # Mediux Filters
     mediux_filters_label = ctk.CTkLabel(settings_tab, text="Mediux Filters", text_color="#696969", font=("Roboto", 15))
@@ -1130,6 +1159,7 @@ def create_ui():
     mediux_filters_text.grid(row=5, column=1, pady=5, padx=10, sticky="ew")
     mediux_filters_text.bind("<Enter>", lambda event: on_hover_in(mediux_filters_label))
     mediux_filters_text.bind("<Leave>", lambda event: on_hover_out(mediux_filters_label))
+    bind_context_menu(mediux_filters_text)
 
     settings_tab.grid_rowconfigure(0, weight=0)
     settings_tab.grid_rowconfigure(1, weight=0)
@@ -1167,6 +1197,7 @@ def create_ui():
         font=("Courier", 14)
     )
     bulk_import_text.grid(row=1, column=0, padx=10, pady=5, sticky="nsew", columnspan=2)
+    bind_context_menu(bulk_import_text)
 
     bulk_import_tab.grid_rowconfigure(0, weight=0)
     bulk_import_tab.grid_rowconfigure(1, weight=1) 
@@ -1202,6 +1233,7 @@ def create_ui():
     url_entry.grid(row=1, column=0, columnspan=2, pady=5, padx=5, sticky="ew")
     url_entry.bind("<Enter>", lambda event: on_hover_in(url_label))
     url_entry.bind("<Leave>", lambda event: on_hover_out(url_label))
+    bind_context_menu(url_entry)
 
     clear_button = create_button(poster_scrape_tab, text="Clear", command=clear_url)
     clear_button.grid(row=3, column=0, pady=5, padx=5, ipadx=30, sticky="ew")
