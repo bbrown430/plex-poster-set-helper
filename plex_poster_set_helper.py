@@ -17,7 +17,7 @@ from PIL import Image
 
 
 #! Interactive CLI mode flag
-interactive_cli = False   # Set to False when building the executable with PyInstaller for it launches the GUI by default
+interactive_cli = True   # Set to False when building the executable with PyInstaller for it launches the GUI by default
 
 
 #@ ---------------------- CORE FUNCTIONS ----------------------
