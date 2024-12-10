@@ -440,7 +440,7 @@ def scrape_mediux(soup):
                 season = data["episode_id"]["season_id"]["season_number"]
                 title = data["title"]
                 try:
-                    episode = int(title.split(" E")[1])
+                    episode = int(title.rsplit(" E",1)[1])
                 except:
                     print(f"Error getting episode number for {title}.")
                 file_type = "title_card"
