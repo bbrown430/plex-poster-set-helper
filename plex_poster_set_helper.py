@@ -5,6 +5,7 @@ import os
 import sys
 import json
 from bs4 import BeautifulSoup
+from pathvalidate import sanitize_filename
 from plexapi.server import PlexServer
 import plexapi.exceptions
 import time
@@ -209,59 +210,138 @@ def find_collection(library, poster):
     return None
 
 
-def save_asset(asset_path_sans_extension, poster):
+def save_asset(asset_path_sans_extension: str, poster: dict) -> dict:
+    """
+    Downloads the poster url, saving both the media and the poster metadata to files.
+
+    The extension will be determined based on the contents of the media in poster['url'].
+
+    Args:
+        asset_path_sans_extension (str): the path including the name without extension to save to
+        poster (dict): metadata for the media
+
+    Returns:
+        dict: Paths to the media and the metadata files
+             - "asset" (str): the media path
+             - "metadata" (str): the json path
+
+    Examples:
+        >>> p = {
+        ...    "title": "3 Body Problem",
+        ...    "season": 1,
+        ...    "episode": 1,
+        ...    "url": "https://mediux.pro/_next/image?url=https%3A%2F%2Fapi.mediux.pro%2Fassets%2F64ba0b05-78ad-4866-b20c-0af80062a6b3&w=3840&q=80",
+        ...    "source": "mediux",
+        ...    "year": 2024
+        ...    }
+        >>> result = save_asset("cache/tv_shows/3 Body Problem (2024)/s1/s1e1", p)
+        File downloaded and saved to cache/tv_shows/3 Body Problem (2024)/s1/s1e1.jpg
+        File downloaded and saved to cache/tv_shows/3 Body Problem (2024)/s1/s1e1.json
+        >>> print(json.dumps(result, indent=4))
+        {
+            "asset": "cache/tv_shows/3 Body Problem (2024)/s1/s1e1.jpg",
+            "metadata": "cache/tv_shows/3 Body Problem (2024)/s1/s1e1.json"
+        }
+    """
+    paths = {
+        "asset": None,
+        "metadata": None
+    }
     try:
         directory = os.path.dirname(asset_path_sans_extension)
         if not Path(directory).exists():
             os.makedirs(directory, exist_ok=True)
-        response = requests.get(url=poster['url'])
-        if response.status_code == 200:
+        response = None
+        try:
+            response = requests.get(url=poster['url'],headers={"User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:133.0) Gecko/20100101 Firefox/133.0"})
+        except Exception as e:
+            print(f"Something happened downloading file at url: '{poster['url']}'. {e}")
+        if response and response.status_code == 200:
             # use file content to determine extension
             content_info = fleep.get(response.content[:128])
             image_path = asset_path_sans_extension + f".{content_info.extension[0]}"
             with open(image_path, "wb") as file:
                 file.write(response.content)
+            print(f"File downloaded and saved to {image_path}")
+            paths["asset"] = image_path
             json_path = asset_path_sans_extension + ".json"
             with open(json_path, "w") as file:
                 json.dump(poster, file, indent=4)
-            print(f"File downloaded and saved to {image_path}")
-
-        else:
+            print(f"File downloaded and saved to {json_path}")
+            paths["metadata"] = json_path
+        elif response:
             print(f"Failed to download file: {response.status_code}")
     except Exception as e:
-        print("ruh roh")
+        print(f"Some error occurred saving assets: {e}")
+    return paths
+
+
+def cache_tv_poster(poster: dict) -> dict:
+    path_sans_extension = ""  # the file extension will be determined by the actual binary data downloaded
+    try:
+        path_sans_extension = os.path.join("cache", "tv_shows", f"{sanitize_filename(poster['title'])} ({poster['year']})")
+        if poster["season"] == "Cover":
+            path_sans_extension = os.path.join(path_sans_extension, "cover")
+        elif poster["season"] == 0:
+            path_sans_extension = os.path.join(path_sans_extension, "specials", "poster")
+        elif poster["season"] == "Backdrop":
+            path_sans_extension = os.path.join(path_sans_extension, "backdrop")
+        elif poster["season"] >= 1:
+            if poster["episode"] == "Cover":
+                path_sans_extension = os.path.join(path_sans_extension, f"s{poster['season']}", "cover")
+            elif poster["episode"] is None:
+                path_sans_extension = os.path.join(path_sans_extension, f"s{poster['season']}", "art")
+            elif poster["episode"] is not None:
+                path_sans_extension = os.path.join(path_sans_extension, f"s{poster['season']}",
+                                                       f"s{poster['season']}e{poster['episode']}")
+        return save_asset(path_sans_extension, poster)
+    except Exception as e:
+        print(f"Something happened attempting to save an asset to '{path_sans_extension}'")
+        return {}
+
+
+def cache_movie_poster(poster: dict) -> dict:
+    path_sans_extension = os.path.join("cache", "movies", f"{sanitize_filename(poster['title'])} ({poster['year']})", "poster")
+    try:
+        return save_asset(path_sans_extension, poster)
+    except Exception as e:
+        print(f"Something happened attempting to save an asset to '{path_sans_extension}'")
+        return {}
+
+
+def cache_collections_poster(poster: dict) -> dict:
+    path_sans_extension = os.path.join("cache", "collections", f"{sanitize_filename(poster['title'])}", "poster")
+    try:
+        return save_asset(path_sans_extension, poster)
+    except Exception as e:
+        print(f"Something happened attempting to save an asset to '{path_sans_extension}'")
+        return {}
 
 
 def upload_tv_poster(poster, tv):
     tv_show_items = find_in_library(tv, poster)
+    cache_tv_poster(poster)
     if tv_show_items:
         for tv_show in tv_show_items:
-            path_sans_extension = os.path.join(f"{poster['title']} ({poster['year']})")
             try:
                 if poster["season"] == "Cover":
-                    path_sans_extension = os.path.join(path_sans_extension, "cover")
                     upload_target = tv_show
                     print(f"Uploaded cover art for {poster['title']} - {poster['season']} in {tv_show.librarySectionTitle} library.")
                 elif poster["season"] == 0:
-                    path_sans_extension = os.path.join(path_sans_extension, "specials", "poster")
                     upload_target = tv_show.season("Specials")
                     print(f"Uploaded art for {poster['title']} - Specials in {tv_show.librarySectionTitle} library.")
                 elif poster["season"] == "Backdrop":
-                    path_sans_extension = os.path.join(path_sans_extension, "backdrop")
                     upload_target = tv_show
                     print(f"Uploaded background art for {poster['title']} in {tv_show.librarySectionTitle} library.")
                 elif poster["season"] >= 1:
                     if poster["episode"] == "Cover":
-                        path_sans_extension = os.path.join(path_sans_extension, f"s{poster['season']}", "cover")
                         upload_target = tv_show.season(poster["season"])
                         print(f"Uploaded art for {poster['title']} - Season {poster['season']} in {tv_show.librarySectionTitle} library.")
                     elif poster["episode"] is None:
-                        path_sans_extension = os.path.join(path_sans_extension, f"s{poster['season']}", "art")
                         upload_target = tv_show.season(poster["season"])
                         print(f"Uploaded art for {poster['title']} - Season {poster['season']} in {tv_show.librarySectionTitle} library.")
                     elif poster["episode"] is not None:
                         try:
-                            path_sans_extension = os.path.join(path_sans_extension, f"s{poster['season']}", f"s{poster['season']}e{poster['episode']}")
                             upload_target = tv_show.season(poster["season"]).episode(poster["episode"])
                             print(f"Uploaded art for {poster['title']} - Season {poster['season']} Episode {poster['episode']} in {tv_show.librarySectionTitle} library..")
                         except:
@@ -276,10 +356,6 @@ def upload_tv_poster(poster, tv):
                         upload_target.uploadPoster(url=poster['url'])
                     except:
                         print("Unable to upload last poster.")
-                try:
-                    save_asset(path_sans_extension, poster)
-                except:
-                    print("fuck")
                 if poster["source"] == "posterdb":
                     time.sleep(6)  # too many requests prevention
             except:
@@ -290,6 +366,7 @@ def upload_tv_poster(poster, tv):
 
 def upload_movie_poster(poster, movies):
     movie_items = find_in_library(movies, poster)
+    cache_movie_poster(poster)
     if movie_items:
         for movie_item in movie_items:
             try:
@@ -305,6 +382,7 @@ def upload_movie_poster(poster, movies):
 
 def upload_collection_poster(poster, movies):
     collection_items = find_collection(movies, poster)
+    cache_collections_poster(poster)
     if collection_items:
         for collection in collection_items:
             try:

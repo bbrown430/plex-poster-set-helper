@@ -9,3 +9,4 @@ urllib3==2.1.0
 customtkinter==5.2.2
 Pillow==10.4.0
 fleep
+pathvalidate
