@@ -125,6 +125,32 @@ def plex_setup(gui_mode=False):
     return tv, movies
 
 
+def cache_setup(gui_mode=False) -> bool:
+    # Check if config.json exists
+    if os.path.exists("config.json"):
+        try:
+            config = json.load(open("config.json"))
+            cache_enabled = config.get("cache_enabled", False)
+            cache_folder = config.get("cache_folder", "")
+        except Exception as e:
+            if gui_mode:
+                app.after(300, update_error, f"Error with config.json: {str(e)}")
+                return False
+            sys.exit("Error with config.json file. Please consult the readme.md.")
+    else:
+        cache_enabled, cache_folder = False, ""
+
+    # Validate the fields
+    if not cache_enabled:
+        return True
+    if not create_cache_folder(cache_folder):
+        if gui_mode:
+            app.after(100, update_error,
+                      "Error accessing the cache folder. Ensure the path is correct and your user can read/write to it.")
+            return False
+        sys.exit("Error accessing the cache folder. Ensure the path is correct and your user can read/write to it.")
+    return True
+
 
 def cook_soup(url):  
     headers = { 
@@ -210,6 +236,43 @@ def find_collection(library, poster):
     return None
 
 
+def create_cache_folder(cache_folder: str) -> bool:
+    """Determines if we have necessary permissions to read/write to the cache folder"""
+    path = cache_folder
+    if path == "":
+        print("Blank cache folder. Assuming we want to cache in the working directory")
+    elif not os.path.exists(path):
+        print(f"Path does not exist: {path}")
+        try:
+            os.makedirs(path)
+        except PermissionError:
+            print(f"Permission denied: Unable to create directory at {path}")
+            return False
+        except FileExistsError:
+            print(f"A file with the same name already exists: {path}")
+            return False
+        except OSError as e:
+            print(f"OS error occurred: {e}")
+            return False
+        except Exception as e:
+            print(f"An unexpected error occurred: {e}")
+            return False
+
+        # Check read and write permissions
+    can_read = os.access(path, os.R_OK)
+    can_write = os.access(path, os.W_OK)
+
+    if can_read and can_write:
+        print(f"Read and write access verified for path: {path}")
+        return True
+    elif can_read:
+        print(f"Read access is available, but no write access for path: {path}")
+    elif can_write:
+        print(f"Write access is available, but no read access for path: {path}")
+    else:
+        print(f"No read or write access for path: {path}")
+    return False
+
 def save_asset(asset_path_sans_extension: str, poster: dict) -> dict:
     """
     Downloads the poster url, saving both the media and the poster metadata to files.
@@ -279,7 +342,7 @@ def save_asset(asset_path_sans_extension: str, poster: dict) -> dict:
 def cache_tv_poster(poster: dict) -> dict:
     path_sans_extension = ""  # the file extension will be determined by the actual binary data downloaded
     try:
-        path_sans_extension = os.path.join("cache", "tv_shows", f"{sanitize_filename(poster['title'])} ({poster['year']})")
+        path_sans_extension = os.path.join(config.get("cache_folder"), "tv_shows", f"{sanitize_filename(poster['title'])} ({poster['year']})")
         if poster["season"] == "Cover":
             path_sans_extension = os.path.join(path_sans_extension, "cover")
         elif poster["season"] == 0:
@@ -301,7 +364,7 @@ def cache_tv_poster(poster: dict) -> dict:
 
 
 def cache_movie_poster(poster: dict) -> dict:
-    path_sans_extension = os.path.join("cache", "movies", f"{sanitize_filename(poster['title'])} ({poster['year']})", "poster")
+    path_sans_extension = os.path.join(config.get("cache_folder"), "movies", f"{sanitize_filename(poster['title'])} ({poster['year']})", "poster")
     try:
         return save_asset(path_sans_extension, poster)
     except Exception as e:
@@ -310,7 +373,7 @@ def cache_movie_poster(poster: dict) -> dict:
 
 
 def cache_collections_poster(poster: dict) -> dict:
-    path_sans_extension = os.path.join("cache", "collections", f"{sanitize_filename(poster['title'])}", "poster")
+    path_sans_extension = os.path.join(config.get("cache_folder"), "collections", f"{sanitize_filename(poster['title'])}", "poster")
     try:
         return save_asset(path_sans_extension, poster)
     except Exception as e:
@@ -320,7 +383,8 @@ def cache_collections_poster(poster: dict) -> dict:
 
 def upload_tv_poster(poster, tv):
     tv_show_items = find_in_library(tv, poster)
-    cache_tv_poster(poster)
+    if config.get("cache_enabled"):
+        cache_tv_poster(poster)
     if tv_show_items:
         for tv_show in tv_show_items:
             try:
@@ -366,7 +430,8 @@ def upload_tv_poster(poster, tv):
 
 def upload_movie_poster(poster, movies):
     movie_items = find_in_library(movies, poster)
-    cache_movie_poster(poster)
+    if config.get("cache_enabled"):
+        cache_movie_poster(poster)
     if movie_items:
         for movie_item in movie_items:
             try:
@@ -382,7 +447,8 @@ def upload_movie_poster(poster, movies):
 
 def upload_collection_poster(poster, movies):
     collection_items = find_collection(movies, poster)
-    cache_collections_poster(poster)
+    if config.get("cache_enabled"):
+        cache_collections_poster(poster)
     if collection_items:
         for collection in collection_items:
             try:
@@ -553,7 +619,7 @@ def scrape_mediux(soup):
                 season = data["episode_id"]["season_id"]["season_number"]
                 title = data["title"]
                 try:
-                    episode = int(title.split(" E")[1])
+                    episode = int(title.rsplit(" E",1)[1])
                 except:
                     print(f"Error getting episode number for {title}.")
                 file_type = "title_card"
@@ -806,7 +872,9 @@ def load_config(config_path="config.json"):
         "bulk_txt": "bulk_import.txt",
         "tv_library": ["TV Shows", "Anime"],
         "movie_library": ["Movies"],
-        "mediux_filters": ["title_card", "background", "season_cover", "show_cover"]
+        "mediux_filters": ["title_card", "background", "season_cover", "show_cover"],
+        "cache_enabled": True,
+        "cache_folder": ""
     }
 
     # Create the config.json file if it doesn't exist
@@ -830,14 +898,17 @@ def load_config(config_path="config.json"):
         movie_library = config.get("movie_library", [])
         mediux_filters = config.get("mediux_filters", [])
         bulk_txt = config.get("bulk_txt", "bulk_import.txt")
-
+        cache_enabled = config.get("cache_enabled", True)
+        cache_folder = config.get("cache_folder", "")
         return {
             "base_url": base_url,
             "token": token,
             "tv_library": tv_library,
             "movie_library": movie_library,
             "mediux_filters": mediux_filters,
-            "bulk_txt": bulk_txt
+            "bulk_txt": bulk_txt,
+            "cache_enabled": cache_enabled,
+            "cache_folder": cache_folder
         }
     except Exception as e:
         update_error(f"Error loading config: {str(e)}")
@@ -852,7 +923,9 @@ def save_config():
         "tv_library": [item.strip() for item in tv_library_text.get().strip().split(",")],
         "movie_library": [item.strip() for item in movie_library_text.get().strip().split(",")],
         "mediux_filters": mediux_filters_text.get().strip().split(", "), 
-        "bulk_txt": bulk_txt_entry.get().strip()
+        "bulk_txt": bulk_txt_entry.get().strip(),
+        "cache_enabled": cache_enabled_checkbox.get(),
+        "cache_folder": cache_folder_text.get().strip()
     }
 
     try:
@@ -895,7 +968,18 @@ def load_and_update_ui():
 
     if mediux_filters_text is not None:
         mediux_filters_text.delete(0, ctk.END) 
-        mediux_filters_text.insert(0, ", ".join(config.get("mediux_filters", []))) 
+        mediux_filters_text.insert(0, ", ".join(config.get("mediux_filters", [])))
+
+    if cache_enabled_checkbox is not None:
+        if config.get("cache_enabled"):
+            cache_enabled_checkbox.select()
+        else:
+            cache_enabled_checkbox.deselect()
+
+    if cache_folder_text is not None:
+        cache_folder_text.delete(0, ctk.END)
+        cache_folder_text.insert(0, config.get("cache_folder", []))
+
         
     load_bulk_import_file()
     
@@ -920,6 +1004,7 @@ def run_url_scrape_thread():
     
 def run_bulk_import_scrape_thread():
     '''Run the bulk import scrape in a separate thread.'''
+
     global bulk_import_button
     bulk_import_list = bulk_import_text.get(1.0, ctk.END).strip().split("\n")
     valid_urls = parse_urls(bulk_import_list)
@@ -941,6 +1026,8 @@ def run_bulk_import_scrape_thread():
 def process_scrape_url(url):
     '''Process the URL scrape.'''
     try:
+        if not cache_setup(gui_mode=True):
+            return
         # Perform plex setup
         tv, movies = plex_setup(gui_mode=True)
 
@@ -969,6 +1056,8 @@ def process_scrape_url(url):
 def process_bulk_import(valid_urls):
     '''Process the bulk import scrape.'''
     try:
+        if not cache_setup(gui_mode=True):
+            return
         tv, movies = plex_setup(gui_mode=True)
 
         # Check if plex setup returned valid values
@@ -1114,7 +1203,7 @@ def create_button(container, text, command, color=None, primary=False, height=35
 
 def create_ui():
     '''Create the main UI window.'''
-    global app, global_context_menu, scrape_button, clear_button, mediux_filters_text, bulk_import_text, base_url_entry, token_entry, status_label, url_entry, app, bulk_import_button, tv_library_text, movie_library_text, bulk_txt_entry
+    global app, global_context_menu, scrape_button, clear_button, mediux_filters_text, bulk_import_text, base_url_entry, token_entry, status_label, url_entry, app, bulk_import_button, tv_library_text, movie_library_text, bulk_txt_entry, cache_enabled_checkbox, cache_folder_text
 
     app = ctk.CTk()
     ctk.set_appearance_mode("dark")
@@ -1274,19 +1363,41 @@ def create_ui():
     mediux_filters_text.bind("<Leave>", lambda event: on_hover_out(mediux_filters_label))
     bind_context_menu(mediux_filters_text)
 
+    # Cache Enabled Checkbox
+    cache_enabled_label = ctk.CTkLabel(settings_tab, text="Cache Enabled", text_color="#696969", font=("Roboto", 15))
+    cache_enabled_label.grid(row=6, column=0, pady=5, padx=10, sticky="w")
+    cache_enabled_checkbox = ctk.CTkCheckBox(settings_tab, text="", fg_color="#1C1E1E", text_color="#A1A1A1", onvalue=True, offvalue=False)
+    cache_enabled_checkbox.grid(row=6, column=1, pady=5, padx=10, sticky="ew")
+    cache_enabled_checkbox.bind("<Enter>", lambda event: on_hover_in(cache_enabled_label))
+    cache_enabled_checkbox.bind("<Leave>", lambda event: on_hover_out(cache_enabled_label))
+    bind_context_menu(cache_enabled_checkbox)
+
+    # Cache path
+    cache_folder_label = ctk.CTkLabel(settings_tab, text="Cache Folder", text_color="#696969", font=("Roboto", 15))
+    cache_folder_label.grid(row=7, column=0, pady=5, padx=10, sticky="w")
+    cache_folder_text = ctk.CTkEntry(settings_tab, placeholder_text="Enter a cache folder path", fg_color="#1C1E1E",
+                                     text_color="#A1A1A1", border_width=0, height=40)
+    cache_folder_text.grid(row=7, column=1, pady=5, padx=10, sticky="ew")
+    cache_folder_text.bind("<Enter>", lambda event: on_hover_in(cache_folder_label))
+    cache_folder_text.bind("<Leave>", lambda event: on_hover_out(cache_folder_label))
+    bind_context_menu(cache_folder_text)
+    
+
     settings_tab.grid_rowconfigure(0, weight=0)
     settings_tab.grid_rowconfigure(1, weight=0)
     settings_tab.grid_rowconfigure(2, weight=0)
     settings_tab.grid_rowconfigure(3, weight=0)
     settings_tab.grid_rowconfigure(4, weight=0)
     settings_tab.grid_rowconfigure(5, weight=0) 
-    settings_tab.grid_rowconfigure(6, weight=1) 
+    settings_tab.grid_rowconfigure(6, weight=0)
+    settings_tab.grid_rowconfigure(7, weight=0)
+    settings_tab.grid_rowconfigure(9, weight=1)
 
     # ? Load and Save Buttons (Anchored to the bottom)
     load_button = create_button(settings_tab, text="Reload", command=load_and_update_ui)
-    load_button.grid(row=7, column=0, pady=5, padx=5, ipadx=30, sticky="ew")
+    load_button.grid(row=10, column=0, pady=5, padx=5, ipadx=30, sticky="ew")
     save_button = create_button(settings_tab, text="Save", command=save_config, primary=True)
-    save_button.grid(row=7, column=1, pady=5, padx=5, sticky="ew")
+    save_button.grid(row=10, column=1, pady=5, padx=5, sticky="ew")
 
     settings_tab.grid_rowconfigure(7, weight=0, minsize=40)
 
@@ -1400,6 +1511,7 @@ def interactive_cli_loop(tv, movies, bulk_txt):
             print("Launching GUI...")
             tv, movies = plex_setup(gui_mode=True)
             create_ui()
+            cache_setup(gui_mode=True)
             break  # Exit CLI loop to launch GUI
 
         elif choice == '4':
@@ -1420,7 +1532,7 @@ def check_libraries(tv, movies):
 
 # * Main Initialization ---
 if __name__ == "__main__":
-    config = load_config() 
+    config = load_config()
     bulk_txt = config.get("bulk_txt", "bulk_import.txt")
     
     # Check for CLI arguments regardless of interactive_cli flag
@@ -1430,9 +1542,11 @@ if __name__ == "__main__":
         # Handle command-line arguments
         if command == 'gui':
             create_ui()
+            cache_setup(gui_mode=True)
             tv, movies = plex_setup(gui_mode=True)
 
         elif command == 'bulk':
+            cache_setup(gui_mode=False)
             tv, movies = plex_setup(gui_mode=False)
             if len(sys.argv) > 2:
                 file_path = sys.argv[2]
@@ -1444,6 +1558,7 @@ if __name__ == "__main__":
         elif "/user/" in command:
             scrape_entire_user(command)
         else:
+            cache_setup(gui_mode=False)
             tv, movies = plex_setup(gui_mode=False)
             set_posters(command, tv, movies)
     
@@ -1451,6 +1566,7 @@ if __name__ == "__main__":
         # If no CLI arguments, proceed with UI creation (if not in interactive CLI mode)
         if not interactive_cli:
             create_ui() 
+            cache_setup(gui_mode=True)
             tv, movies = plex_setup(gui_mode=True)
         else:
             sys.stdout.reconfigure(encoding='utf-8') 
@@ -1458,6 +1574,7 @@ if __name__ == "__main__":
 
             # Perform CLI plex_setup if GUI flag is not present
             if not gui_flag:
+                cache_setup(gui_mode=False)
                 tv, movies = plex_setup(gui_mode=False)
 
             # Handle interactive CLI
