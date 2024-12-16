@@ -372,14 +372,9 @@ def find_in_library(library, poster):
                 except:
                     pass
                 if not library_item and ": " in poster.title: # title might not include a prefix like Star Wars:
-                    library_item = lib.get(poster.title.split(": "[1]))
+                    library_item = lib.get(poster.title.split(": "[1]), year=poster.year)
             else:
-                try:
-                    library_item = lib.get(poster.title)
-                except:
-                    pass
-                if not library_item and ": " in poster.title: # title might not include a prefix like Star Wars:
-                    library_item = lib.get(poster.title.split(": "[1]))
+                library_item = lib.get(poster.title)
             
             if library_item:
                 items.append(library_item)
