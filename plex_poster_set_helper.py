@@ -334,17 +334,28 @@ def parse_string_to_dict(input_string):
 def find_in_library(library, poster):
     items = []
     for lib in library:
+        library_item = None
         try:
             if poster.year is not None:
-                library_item = lib.get(poster.title, year=poster.year)
+                try:
+                    library_item = lib.get(poster.title, year=poster.year)
+                except:
+                    pass
+                if not library_item and ": " in poster.title: # title might not include a prefix like Star Wars:
+                    library_item = lib.get(poster.title.split(": "[1]))
             else:
-                library_item = lib.get(poster.title)
+                try:
+                    library_item = lib.get(poster.title)
+                except:
+                    pass
+                if not library_item and ": " in poster.title: # title might not include a prefix like Star Wars:
+                    library_item = lib.get(poster.title.split(": "[1]))
             
             if library_item:
                 items.append(library_item)
-        except:
+        except Exception as e:
             pass
-    
+
     if items:
         return items
     
@@ -423,6 +434,9 @@ def upload_tv_poster(poster, url, filepath, tv) -> bool:
                 elif poster.show_backdrop:
                     upload_target = tv_show
                     print(f"Uploaded background art for {poster.title} in {tv_show.librarySectionTitle} library.")
+                elif poster.season is None:
+                    print(f"Unknown media type for {poster.title}: {poster.url}")
+                    continue
                 elif poster.season is not None and poster.season >= 1:
                     if poster.season_cover_art:
                         upload_target = tv_show.season(poster.season)
@@ -433,6 +447,7 @@ def upload_tv_poster(poster, url, filepath, tv) -> bool:
                             print(f"Uploaded art for {poster.title} - Season {poster.season} Episode {poster.episode} in {tv_show.librarySectionTitle} library..")
                         except:
                             print(f"{poster.title} - {poster.season} Episode {poster.episode} not found in {tv_show.librarySectionTitle} library, skipping.")
+                            continue
                 if poster.show_backdrop:
                     try:
                         upload_target.uploadArt(url=url, filepath=filepath)
