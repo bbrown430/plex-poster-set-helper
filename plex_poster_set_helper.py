@@ -79,26 +79,38 @@ class MediaMetadata:
                                                        f"s{self.season}e{self.episode}")
         return path_sans_extension
 
-    def load_from_cache(self, cache_location) -> bool:
+    def load_from_cache(self, cache_location) -> ("MediaMetadata", None):
         asset_path_sans_extension = self.build_asset_path(cache_location)
         metadata_path = f"{asset_path_sans_extension}.json"
         if os.path.exists(metadata_path):
             with open(metadata_path, "r") as f:
                 data = json.load(f)
-                for key, value in data.items():
-                    # Convert uploaded_datetime back to datetime if it exists
-                    if key == "uploaded_datetime" and value:
-                        value = datetime.fromisoformat(value)
-                    setattr(self, key, value)
-                return True
+                return MediaMetadata(
+                    url=data.get("url", ""),
+                    source=data.get("source", ""),
+                    title=data.get("title", ""),
+                    year=data.get("year"),
+                    season=data.get("season"),
+                    episode=data.get("episode"),
+                    show_backdrop=data.get("show_backdrop", False),
+                    show_cover_art=data.get("show_cover_art", False),
+                    season_cover_art=data.get("season_cover_art", False),
+                    uploaded_to_plex=data.get("uploaded_to_plex", False),
+                    uploaded_datetime=datetime.fromisoformat(data["uploaded_datetime"]) if data.get(
+                        "uploaded_datetime") else None,
+                    path=data.get("path", ""),
+                    metadata_path=data.get("metadata_path", ""),
+                )
         else:
             print(f"Cache file not found: {metadata_path}")
-            return False
+            return None
 
     def save_to_cache(self, cache_location) -> None:
+        """Save the instance to a JSON file."""
         asset_path_sans_extension = self.build_asset_path(cache_location)
         metadata_path = f"{asset_path_sans_extension}.json"
-        """Save the instance to a JSON file."""
+        if self.uploaded_to_plex and self.uploaded_datetime is None:
+            self.uploaded_datetime = datetime.now()
         with open(metadata_path, "w") as f:
             json.dump({
                 key: (value.isoformat() if isinstance(value, datetime) else value)
@@ -156,6 +168,24 @@ class MediaMetadata:
 
         except Exception as e:
             print(f"Something happened during the save asset process: {e}")
+
+    def is_the_same_media(self, other: "MediaMetadata") -> bool:
+        """
+        Determine if the media defined is the same.
+        """
+        if not isinstance(other, MediaMetadata):
+            return False
+        return (
+                self.url == other.url and
+                self.source == other.source and
+                self.title == other.title and
+                self.year == other.year and
+                self.season == other.season and
+                self.episode == other.episode and
+                self.show_backdrop == other.show_backdrop and
+                self.show_cover_art == other.show_cover_art and
+                self.season_cover_art == other.season_cover_art
+        )
 
 
 def plex_setup(gui_mode=False):
@@ -436,6 +466,7 @@ def upload_tv_poster(poster, url, filepath, tv) -> bool:
                     print(f"Uploaded background art for {poster.title} in {tv_show.librarySectionTitle} library.")
                 elif poster.season is None:
                     print(f"Unknown media type for {poster.title}: {poster.url}")
+                    all_uploaded = False
                     continue
                 elif poster.season is not None and poster.season >= 1:
                     if poster.season_cover_art:
@@ -447,6 +478,7 @@ def upload_tv_poster(poster, url, filepath, tv) -> bool:
                             print(f"Uploaded art for {poster.title} - Season {poster.season} Episode {poster.episode} in {tv_show.librarySectionTitle} library..")
                         except:
                             print(f"{poster.title} - {poster.season} Episode {poster.episode} not found in {tv_show.librarySectionTitle} library, skipping.")
+                            all_uploaded = False
                             continue
                 if poster.show_backdrop:
                     try:
@@ -475,7 +507,7 @@ def upload_movie_poster(poster, url, filepath, movies) -> bool:
         all_uploaded = True
         for movie_item in movie_items:
             try:
-                movie_item.uploadPoster(url=url, filepath=filepath)
+                ret = movie_item.uploadPoster(url=url, filepath=filepath)
                 print(f'Uploaded art for {poster.title} in {movie_item.librarySectionTitle} library.')
                 if poster.source == "posterdb":
                     time.sleep(6)  # too many requests prevention
@@ -531,9 +563,9 @@ def set_posters(url, tv, movies):
 
 
 def cache_collection(cache_folder, movies, poster):
-    # if it is, check to see if both the media and a json file exist
-    if poster.load_from_cache(cache_folder):
-        # if both exist, check json for it being uploaded to plex
+    cached_poster = poster.load_from_cache(cache_folder)
+    if poster.is_the_same_media(cached_poster):
+        poster = cached_poster # use the cached poster as it has plex uploaded state
         if poster.uploaded_to_plex:
             # if uploaded do nothing
             print(f"poster {poster.path} already uploaded; nothing to do")
@@ -544,6 +576,7 @@ def cache_collection(cache_folder, movies, poster):
             else:
                 print(f"{poster.title} was not uploaded to plex")
     else:  # if not cached, download
+        print(f"Poster for {poster.title} was either not cached or there is a new url to use. Downloading.")
         try:
             response = requests.get(url=poster.url, headers={
                 "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:133.0) Gecko/20100101 Firefox/133.0"})
@@ -561,9 +594,9 @@ def cache_collection(cache_folder, movies, poster):
 
 
 def cache_movie(cache_folder, movies, poster):
-    # if it is, check to see if both the media and a json file exist
-    if poster.load_from_cache(cache_folder):
-        # if both exist, check json for it being uploaded to plex
+    cached_poster = poster.load_from_cache(cache_folder)
+    if poster.is_the_same_media(cached_poster):
+        poster = cached_poster  # use the cached poster as it has plex uploaded state
         if poster.uploaded_to_plex:
             # if uploaded do nothing
             print(f"poster {poster.path} already uploaded; nothing to do")
@@ -574,6 +607,7 @@ def cache_movie(cache_folder, movies, poster):
             else:
                 print(f"{poster.title} was not uploaded to plex")
     else:  # if not cached, download
+        print(f"Poster for {poster.title} was either not cached or there is a new url to use. Downloading.")
         try:
             response = requests.get(url=poster.url, headers={
                 "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:133.0) Gecko/20100101 Firefox/133.0"})
@@ -591,12 +625,12 @@ def cache_movie(cache_folder, movies, poster):
 
 
 def cache_tv(cache_folder, tv, poster):
-    # if it is, check to see if both the media and a json file exist
-    if poster.load_from_cache(cache_folder):
-        # if both exist, check json for it being uploaded to plex
+    cached_poster = poster.load_from_cache(cache_folder)
+    if poster.is_the_same_media(cached_poster):
+        poster = cached_poster  # use the cached poster as it has plex uploaded state
         if poster.uploaded_to_plex:
             # if uploaded do nothing
-            print(f"poster {poster.path} already uploaded; nothing to do")
+            print(f"Poster {poster.path} already uploaded. nothing to do")
         else:  # if not uploaded, upload
             if upload_tv_poster(poster=poster, url=None, filepath=poster.path, tv=tv):
                 poster.uploaded_to_plex = True
@@ -604,6 +638,7 @@ def cache_tv(cache_folder, tv, poster):
             else:
                 print(f"{poster.title} was not uploaded to plex")
     else:  # if not cached, download
+        print(f"Poster for {poster.title} was either not cached or there is a new url to use. Downloading.")
         try:
             response = requests.get(url=poster.url, headers={
                 "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:133.0) Gecko/20100101 Firefox/133.0"})
@@ -802,10 +837,13 @@ def scrape_mediux(soup):
                     year = int(movie_data["release_date"][:4])
             elif data["collection_id"]:
                 title = data_dict["set"]["collection"]["collection_name"]
+            elif data["movie_id_backdrop"]:
+                print(f"movie backdrops not currently supported: {data}")
+                continue
             
         image_stub = data["id"]
         poster_url = f"{base_url}{image_stub}{quality_suffix}"
-        
+
         if media_type == "Show":
             showposter = MediaMetadata(title=show_name,
                                        url=poster_url,
