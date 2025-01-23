@@ -1,9 +1,16 @@
+import glob
+from dataclasses import dataclass
+from datetime import datetime
+from typing import NamedTuple, Self
+
+import fleep
 import requests
 import math
 import os
 import sys
 import json
 from bs4 import BeautifulSoup
+from pathvalidate import sanitize_filename
 from plexapi.server import PlexServer
 import plexapi.exceptions
 import time
@@ -14,13 +21,172 @@ import threading
 import xml.etree.ElementTree
 import atexit
 from PIL import Image
-
+from pathlib import Path
 
 #! Interactive CLI mode flag
 interactive_cli = True   # Set to False when building the executable with PyInstaller for it launches the GUI by default
 
 
 #@ ---------------------- CORE FUNCTIONS ----------------------
+@dataclass
+class MediaMetadata:
+    url: str = ""
+    source: str = ""
+    title: str = ""
+    year: int = None
+    season: int = None
+    episode: int = None
+    show_backdrop: bool = False
+    show_cover_art: bool = False
+    season_cover_art: bool = False
+
+    uploaded_to_plex: bool = False
+    uploaded_datetime: datetime = None
+
+    path: str = ""
+    metadata_path: str = ""
+
+    def is_show(self) -> bool:
+        return (bool(self.episode) or (self.season is not None and self.season >= 0) or
+                self.show_cover_art or self.show_backdrop or self.season_cover_art)
+
+    def is_movie(self) -> bool:
+        return not self.is_show() and bool(self.year)
+
+    def is_collection(self) -> bool:
+        return not self.is_show() and self.year is None
+
+    def build_asset_path(self, cache_location: str) -> str:
+        path_sans_extension = ""
+        if self.is_collection():
+            path_sans_extension = os.path.join(cache_location, "collections", f"{sanitize_filename(self.title)}", "poster")
+        elif self.is_movie():
+            path_sans_extension = os.path.join(cache_location, "movies", f"{sanitize_filename(self.title)} ({self.year})", "poster")
+        elif self.is_show():
+            path_sans_extension = os.path.join(cache_location, "tv_shows",
+                                               f"{sanitize_filename(self.title)} ({self.year})")
+            if self.show_cover_art:
+                path_sans_extension = os.path.join(path_sans_extension, "cover")
+            if self.show_backdrop:
+                path_sans_extension = os.path.join(path_sans_extension, "backdrop")
+            elif self.season is not None and self.season == 0:
+                path_sans_extension = os.path.join(path_sans_extension, "specials", "poster")
+            elif self.season is not None and self.season >= 1:
+                if self.season_cover_art:
+                    path_sans_extension = os.path.join(path_sans_extension, f"s{self.season}", "cover")
+                elif bool(self.episode):
+                    path_sans_extension = os.path.join(path_sans_extension, f"s{self.season}",
+                                                       f"s{self.season}e{self.episode}")
+        return path_sans_extension
+
+    def load_from_cache(self, cache_location) -> ("MediaMetadata", None):
+        asset_path_sans_extension = self.build_asset_path(cache_location)
+        metadata_path = f"{asset_path_sans_extension}.json"
+        if os.path.exists(metadata_path):
+            with open(metadata_path, "r") as f:
+                data = json.load(f)
+                return MediaMetadata(
+                    url=data.get("url", ""),
+                    source=data.get("source", ""),
+                    title=data.get("title", ""),
+                    year=data.get("year"),
+                    season=data.get("season"),
+                    episode=data.get("episode"),
+                    show_backdrop=data.get("show_backdrop", False),
+                    show_cover_art=data.get("show_cover_art", False),
+                    season_cover_art=data.get("season_cover_art", False),
+                    uploaded_to_plex=data.get("uploaded_to_plex", False),
+                    uploaded_datetime=datetime.fromisoformat(data["uploaded_datetime"]) if data.get(
+                        "uploaded_datetime") else None,
+                    path=data.get("path", ""),
+                    metadata_path=data.get("metadata_path", ""),
+                )
+        else:
+            print(f"Cache file not found: {metadata_path}")
+            return None
+
+    def save_to_cache(self, cache_location) -> None:
+        """Save the instance to a JSON file."""
+        asset_path_sans_extension = self.build_asset_path(cache_location)
+        metadata_path = f"{asset_path_sans_extension}.json"
+        if self.uploaded_to_plex and self.uploaded_datetime is None:
+            self.uploaded_datetime = datetime.now()
+        with open(metadata_path, "w") as f:
+            json.dump({
+                key: (value.isoformat() if isinstance(value, datetime) else value)
+                for key, value in self.__dict__.items()
+            }, f, indent=4)
+
+    def save_asset(self, cache_location, data):
+        """
+        Downloads the poster url, saving both the media and the poster metadata to files.
+
+        The extension will be determined based on the contents of the media in poster['url'].
+
+        Args:
+            asset_path_sans_extension (str): the path including the name without extension to save to
+            poster (MediaMetadata): metadata for the media
+
+        Returns:
+            dict: Paths to the media and the metadata files
+                 - "asset" (str): the media path
+                 - "metadata" (str): the json path
+
+        Examples:
+            >>> p = {
+            ...    "title": "3 Body Problem",
+            ...    "season": 1,
+            ...    "episode": 1,
+            ...    "url": "https://mediux.pro/_next/image?url=https%3A%2F%2Fapi.mediux.pro%2Fassets%2F64ba0b05-78ad-4866-b20c-0af80062a6b3&w=3840&q=80",
+            ...    "source": "mediux",
+            ...    "year": 2024
+            ...    }
+            >>> result = save_asset("cache/tv_shows/3 Body Problem (2024)/s1/s1e1", p)
+            File downloaded and saved to cache/tv_shows/3 Body Problem (2024)/s1/s1e1.jpg
+            File downloaded and saved to cache/tv_shows/3 Body Problem (2024)/s1/s1e1.json
+            >>> print(json.dumps(result, indent=4))
+            {
+                "asset": "cache/tv_shows/3 Body Problem (2024)/s1/s1e1.jpg",
+                "metadata": "cache/tv_shows/3 Body Problem (2024)/s1/s1e1.json"
+            }
+        """
+        try:
+            asset_path_sans_extension = self.build_asset_path(cache_location)
+            directory = os.path.dirname(asset_path_sans_extension)
+            if not Path(directory).exists():
+                os.makedirs(directory, exist_ok=True)
+            content_info = fleep.get(data[:128])
+            image_path = asset_path_sans_extension + f".{content_info.extension[0]}"
+            with open(image_path, "wb") as file:
+                file.write(data)
+            print(f"File downloaded and saved to {image_path}")
+            self.path = image_path
+            json_path = asset_path_sans_extension + ".json"
+            self.metadata_path = json_path
+            self.save_to_cache(cache_location)
+            print(f"File downloaded and saved to {json_path}")
+
+        except Exception as e:
+            print(f"Something happened during the save asset process: {e}")
+
+    def is_the_same_media(self, other: "MediaMetadata") -> bool:
+        """
+        Determine if the media defined is the same.
+        """
+        if not isinstance(other, MediaMetadata):
+            return False
+        return (
+                self.url == other.url and
+                self.source == other.source and
+                self.title == other.title and
+                self.year == other.year and
+                self.season == other.season and
+                self.episode == other.episode and
+                self.show_backdrop == other.show_backdrop and
+                self.show_cover_art == other.show_cover_art and
+                self.season_cover_art == other.season_cover_art
+        )
+
 
 def plex_setup(gui_mode=False):
     global plex
@@ -123,6 +289,32 @@ def plex_setup(gui_mode=False):
     return tv, movies
 
 
+def cache_setup(gui_mode=False) -> bool:
+    # Check if config.json exists
+    if os.path.exists("config.json"):
+        try:
+            config = json.load(open("config.json"))
+            cache_enabled = config.get("cache_enabled", False)
+            cache_folder = config.get("cache_folder", "")
+        except Exception as e:
+            if gui_mode:
+                app.after(300, update_error, f"Error with config.json: {str(e)}")
+                return False
+            sys.exit("Error with config.json file. Please consult the readme.md.")
+    else:
+        cache_enabled, cache_folder = False, ""
+
+    # Validate the fields
+    if not cache_enabled:
+        return True
+    if not create_cache_folder(cache_folder):
+        if gui_mode:
+            app.after(100, update_error,
+                      "Error accessing the cache folder. Ensure the path is correct and your user can read/write to it.")
+            return False
+        sys.exit("Error accessing the cache folder. Ensure the path is correct and your user can read/write to it.")
+    return True
+
 
 def cook_soup(url):  
     headers = { 
@@ -172,21 +364,27 @@ def parse_string_to_dict(input_string):
 def find_in_library(library, poster):
     items = []
     for lib in library:
+        library_item = None
         try:
-            if poster["year"] is not None:
-                library_item = lib.get(poster["title"], year=poster["year"])
+            if poster.year is not None:
+                try:
+                    library_item = lib.get(poster.title, year=poster.year)
+                except:
+                    pass
+                if not library_item and ": " in poster.title: # title might not include a prefix like Star Wars:
+                    library_item = lib.get(poster.title.split(": "[1]), year=poster.year)
             else:
-                library_item = lib.get(poster["title"])
+                library_item = lib.get(poster.title)
             
             if library_item:
                 items.append(library_item)
-        except:
+        except Exception as e:
             pass
-    
+
     if items:
         return items
     
-    print(f"{poster['title']} not found, skipping.")
+    print(f"{poster.title} not found, skipping.")
     return None
 
 
@@ -196,7 +394,7 @@ def find_collection(library, poster):
         try:
             movie_collections = lib.collections()
             for plex_collection in movie_collections:
-                if plex_collection.title == poster["title"]:
+                if plex_collection.title == poster.title:
                     collections.append(plex_collection)
         except:
             pass
@@ -208,92 +406,249 @@ def find_collection(library, poster):
     return None
 
 
-def upload_tv_poster(poster, tv):
+def create_cache_folder(cache_folder: str) -> bool:
+    """Determines if we have necessary permissions to read/write to the cache folder"""
+    path = cache_folder
+    if path == "":
+        print("Blank cache folder. Assuming we want to cache in the working directory")
+    elif not os.path.exists(path):
+        print(f"Path does not exist: {path}")
+        try:
+            os.makedirs(path)
+        except PermissionError:
+            print(f"Permission denied: Unable to create directory at {path}")
+            return False
+        except FileExistsError:
+            print(f"A file with the same name already exists: {path}")
+            return False
+        except OSError as e:
+            print(f"OS error occurred: {e}")
+            return False
+        except Exception as e:
+            print(f"An unexpected error occurred: {e}")
+            return False
+
+        # Check read and write permissions
+    can_read = os.access(path, os.R_OK)
+    can_write = os.access(path, os.W_OK)
+
+    if can_read and can_write:
+        print(f"Read and write access verified for path: {path}")
+        return True
+    elif can_read:
+        print(f"Read access is available, but no write access for path: {path}")
+    elif can_write:
+        print(f"Write access is available, but no read access for path: {path}")
+    else:
+        print(f"No read or write access for path: {path}")
+    return False
+
+
+def upload_tv_poster(poster, url, filepath, tv) -> bool:
     tv_show_items = find_in_library(tv, poster)
     if tv_show_items:
+        all_uploaded = True
         for tv_show in tv_show_items:
             try:
-                if poster["season"] == "Cover":
+                if poster.show_cover_art:
                     upload_target = tv_show
-                    print(f"Uploaded cover art for {poster['title']} - {poster['season']} in {tv_show.librarySectionTitle} library.")
-                elif poster["season"] == 0:
+                    print(f"Uploaded cover art for {poster.title} - {poster.season} in {tv_show.librarySectionTitle} library.")
+                elif poster.season is not None and poster.season == 0:
                     upload_target = tv_show.season("Specials")
-                    print(f"Uploaded art for {poster['title']} - Specials in {tv_show.librarySectionTitle} library.")
-                elif poster["season"] == "Backdrop":
+                    print(f"Uploaded art for {poster.title} - Specials in {tv_show.librarySectionTitle} library.")
+                elif poster.show_backdrop:
                     upload_target = tv_show
-                    print(f"Uploaded background art for {poster['title']} in {tv_show.librarySectionTitle} library.")
-                elif poster["season"] >= 1:
-                    if poster["episode"] == "Cover":
-                        upload_target = tv_show.season(poster["season"])
-                        print(f"Uploaded art for {poster['title']} - Season {poster['season']} in {tv_show.librarySectionTitle} library.")
-                    elif poster["episode"] is None:
-                        upload_target = tv_show.season(poster["season"])
-                        print(f"Uploaded art for {poster['title']} - Season {poster['season']} in {tv_show.librarySectionTitle} library.")
-                    elif poster["episode"] is not None:
+                    print(f"Uploaded background art for {poster.title} in {tv_show.librarySectionTitle} library.")
+                elif poster.season is None:
+                    print(f"Unknown media type for {poster.title}: {poster.url}")
+                    all_uploaded = False
+                    continue
+                elif poster.season is not None and poster.season >= 1:
+                    if poster.season_cover_art:
+                        upload_target = tv_show.season(poster.season)
+                        print(f"Uploaded art for {poster.title} - Season {poster.season} in {tv_show.librarySectionTitle} library.")
+                    elif bool(poster.episode):
                         try:
-                            upload_target = tv_show.season(poster["season"]).episode(poster["episode"])
-                            print(f"Uploaded art for {poster['title']} - Season {poster['season']} Episode {poster['episode']} in {tv_show.librarySectionTitle} library..")
+                            upload_target = tv_show.season(poster.season).episode(poster.episode)
+                            print(f"Uploaded art for {poster.title} - Season {poster.season} Episode {poster.episode} in {tv_show.librarySectionTitle} library..")
                         except:
-                            print(f"{poster['title']} - {poster['season']} Episode {poster['episode']} not found in {tv_show.librarySectionTitle} library, skipping.")
-                if poster["season"] == "Backdrop":
+                            print(f"{poster.title} - {poster.season} Episode {poster.episode} not found in {tv_show.librarySectionTitle} library, skipping.")
+                            all_uploaded = False
+                            continue
+                if poster.show_backdrop:
                     try:
-                        upload_target.uploadArt(url=poster['url'])
-                    except:
-                        print("Unable to upload last poster.")
+                        upload_target.uploadArt(url=url, filepath=filepath)
+                    except Exception as e:
+                        print(f"Unable to upload last poster. {e}")
+                        all_uploaded = False
                 else:
                     try:
-                        upload_target.uploadPoster(url=poster['url'])
-                    except:
-                        print("Unable to upload last poster.")
-                if poster["source"] == "posterdb":
+                        upload_target.uploadPoster(url=url, filepath=filepath)
+                    except Exception as e:
+                        print(f"Unable to upload last poster. {e}")
+                        all_uploaded = False
+                if poster.source == "posterdb":
                     time.sleep(6)  # too many requests prevention
             except:
-                print(f"{poster['title']} - Season {poster['season']} not found in {tv_show.librarySectionTitle} library, skipping.")
+                print(f"{poster.title} - Season {poster.season} not found in {tv_show.librarySectionTitle} library, skipping.")
+        return all_uploaded
     else:
-        print(f"{poster['title']} not found in any library.")
+        print(f"{poster.title} not found in any library.")
+    return False
 
-
-def upload_movie_poster(poster, movies):
+def upload_movie_poster(poster, url, filepath, movies) -> bool:
     movie_items = find_in_library(movies, poster)
     if movie_items:
+        all_uploaded = True
         for movie_item in movie_items:
             try:
-                movie_item.uploadPoster(poster["url"])
-                print(f'Uploaded art for {poster["title"]} in {movie_item.librarySectionTitle} library.')
-                if poster["source"] == "posterdb":
+                ret = movie_item.uploadPoster(url=url, filepath=filepath)
+                print(f'Uploaded art for {poster.title} in {movie_item.librarySectionTitle} library.')
+                if poster.source == "posterdb":
                     time.sleep(6)  # too many requests prevention
-            except:
-                print(f'Unable to upload art for {poster["title"]} in {movie_item.librarySectionTitle} library.')
+            except Exception as e:
+                print(f'Unable to upload art for {poster.title} in {movie_item.librarySectionTitle} library.')
+                all_uploaded = False
+            return all_uploaded
     else:
-        print(f'{poster["title"]} not found in any library.')
+        print(f'{poster.title} not found in any library.')
+    return False
 
 
-def upload_collection_poster(poster, movies):
+def upload_collection_poster(poster, url, filepath, movies) -> bool:
     collection_items = find_collection(movies, poster)
     if collection_items:
+        all_uploaded = True
         for collection in collection_items:
             try:
-                collection.uploadPoster(poster["url"])
-                print(f'Uploaded art for {poster["title"]} in {collection.librarySectionTitle} library.')
-                if poster["source"] == "posterdb":
+                collection.uploadPoster(url=url, filepath=filepath)
+                print(f'Uploaded art for {poster.title} in {collection.librarySectionTitle} library.')
+                if poster.source == "posterdb":
                     time.sleep(6)  # too many requests prevention
             except:
-                print(f'Unable to upload art for {poster["title"]} in {collection.librarySectionTitle} library.')
+                print(f'Unable to upload art for {poster.title} in {collection.librarySectionTitle} library.')
+                all_uploaded = False
+        return all_uploaded
     else:
-        print(f'{poster["title"]} collection not found in any library.')
+        print(f'{poster.title} collection not found in any library.')
+    return False
 
 
 def set_posters(url, tv, movies):
     movieposters, showposters, collectionposters = scrape(url)
-
+    cache_folder = config.get("cache_folder")
     for poster in collectionposters:
-        upload_collection_poster(poster, movies)
+        if config.get("cache_enabled"):
+            cache_collection(cache_folder, movies, poster)
+        else:
+            upload_collection_poster(poster=poster, url=poster.url, filepath=None, movies=movies)
+
         
     for poster in movieposters:
-        upload_movie_poster(poster, movies)
+        if config.get("cache_enabled"):
+            cache_movie(cache_folder, movies, poster)
+        else:
+            upload_movie_poster(poster=poster, url=poster.url, filepath=None, movies=movies)
     
     for poster in showposters:
-        upload_tv_poster(poster, tv)
+        if config.get("cache_enabled"):
+            cache_tv(cache_folder, tv, poster)
+        else:
+            upload_tv_poster(poster=poster, url=poster.url, filepath=None, tv=tv)
+
+
+def cache_collection(cache_folder, movies, poster):
+    cached_poster = poster.load_from_cache(cache_folder)
+    if poster.is_the_same_media(cached_poster):
+        poster = cached_poster # use the cached poster as it has plex uploaded state
+        if poster.uploaded_to_plex:
+            # if uploaded do nothing
+            print(f"poster {poster.path} already uploaded; nothing to do")
+        else:  # if not uploaded, upload
+            if upload_collection_poster(poster=poster, url=None, filepath=poster.path, movies=movies):
+                poster.uploaded_to_plex = True
+                poster.save_to_cache(cache_folder)
+            else:
+                print(f"{poster.title} was not uploaded to plex")
+    else:  # if not cached, download
+        print(f"Poster for {poster.title} was either not cached or there is a new url to use. Downloading.")
+        try:
+            response = requests.get(url=poster.url, headers={
+                "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:133.0) Gecko/20100101 Firefox/133.0"})
+        except Exception as e:
+            print(f"Something happened downloading file at url: '{poster.url}'. {e}")
+        if response and response.status_code == 200:
+            poster.save_asset(cache_folder, response.content)
+            if upload_collection_poster(poster=poster, url=None, filepath=poster.path, movies=movies):
+                poster.uploaded_to_plex = True
+                poster.save_to_cache(cache_folder)
+            else:
+                print(f"{poster.title} was not uploaded to plex")
+        elif response:
+            print(f"Failed to download file: {response.status_code}")
+
+
+def cache_movie(cache_folder, movies, poster):
+    cached_poster = poster.load_from_cache(cache_folder)
+    if poster.is_the_same_media(cached_poster):
+        poster = cached_poster  # use the cached poster as it has plex uploaded state
+        if poster.uploaded_to_plex:
+            # if uploaded do nothing
+            print(f"poster {poster.path} already uploaded; nothing to do")
+        else:  # if not uploaded, upload
+            if upload_movie_poster(poster=poster, url=None, filepath=poster.path, movies=movies):
+                poster.uploaded_to_plex = True
+                poster.save_to_cache(cache_folder)
+            else:
+                print(f"{poster.title} was not uploaded to plex")
+    else:  # if not cached, download
+        print(f"Poster for {poster.title} was either not cached or there is a new url to use. Downloading.")
+        try:
+            response = requests.get(url=poster.url, headers={
+                "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:133.0) Gecko/20100101 Firefox/133.0"})
+        except Exception as e:
+            print(f"Something happened downloading file at url: '{poster.url}'. {e}")
+        if response and response.status_code == 200:
+            poster.save_asset(cache_folder, response.content)
+            if upload_movie_poster(poster=poster, url=None, filepath=poster.path, movies=movies):
+                poster.uploaded_to_plex = True
+                poster.save_to_cache(cache_folder)
+            else:
+                print(f"{poster.title} was not uploaded to plex")
+        elif response:
+            print(f"Failed to download file: {response.status_code}")
+
+
+def cache_tv(cache_folder, tv, poster):
+    cached_poster = poster.load_from_cache(cache_folder)
+    if poster.is_the_same_media(cached_poster):
+        poster = cached_poster  # use the cached poster as it has plex uploaded state
+        if poster.uploaded_to_plex:
+            # if uploaded do nothing
+            print(f"Poster {poster.path} already uploaded. nothing to do")
+        else:  # if not uploaded, upload
+            if upload_tv_poster(poster=poster, url=None, filepath=poster.path, tv=tv):
+                poster.uploaded_to_plex = True
+                poster.save_to_cache(cache_folder)
+            else:
+                print(f"{poster.title} was not uploaded to plex")
+    else:  # if not cached, download
+        print(f"Poster for {poster.title} was either not cached or there is a new url to use. Downloading.")
+        try:
+            response = requests.get(url=poster.url, headers={
+                "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:133.0) Gecko/20100101 Firefox/133.0"})
+        except Exception as e:
+            print(f"Something happened downloading file at url: '{poster.url}'. {e}")
+        if response and response.status_code == 200:
+            poster.save_asset(cache_folder, response.content)
+            if upload_tv_poster(poster=poster, url=None, filepath=poster.path, tv=tv):
+                poster.uploaded_to_plex = True
+                poster.save_to_cache(cache_folder)
+            else:
+                print(f"{poster.title} was not uploaded to plex")
+        elif response:
+            print(f"Failed to download file: {response.status_code}")
+
 
 def scrape_posterdb_set_link(soup):
     try:
@@ -345,6 +700,8 @@ def scrape_posterdb(soup):
 
         if media_type == "Show":
             title = title_p.split(" (")[0]
+            season = None
+            is_show_backdrop, is_show_cover_art, is_season_cover_art = False, False, False
             try:
                 year = int(title_p.split(" (")[1].split(")")[0])
             except:
@@ -357,15 +714,14 @@ def scrape_posterdb(soup):
                 elif "Season" in split_season:
                     season = int(split_season.split(" ")[1])
             else:
-                season = "Cover"
-            
-            showposter = {}
-            showposter["title"] = title
-            showposter["url"] = poster_url
-            showposter["season"] = season
-            showposter["episode"] = None
-            showposter["year"] = year
-            showposter["source"] = "posterdb"
+                is_show_cover_art = True
+
+            showposter = MediaMetadata(title=title,
+                                       url=poster_url,
+                                       season=season,
+                                       year=year,
+                                       source="posterdb",
+                                       show_cover_art=is_show_cover_art)
             showposters.append(showposter)
 
         elif media_type == "Movie":
@@ -376,18 +732,16 @@ def scrape_posterdb(soup):
                 title = title_split[0]
             year = title_split[-1].split(")")[0]
                 
-            movieposter = {}
-            movieposter["title"] = title
-            movieposter["url"] = poster_url
-            movieposter["year"] = int(year)
-            movieposter["source"] = "posterdb"
+            movieposter = MediaMetadata(title=title,
+                                        url=poster_url,
+                                        year=int(year),
+                                        source="posterdb")
             movieposters.append(movieposter)
         
         elif media_type == "Collection":
-            collectionposter = {}
-            collectionposter["title"] = title_p
-            collectionposter["url"] = poster_url
-            collectionposter["source"] = "posterdb"
+            collectionposter = MediaMetadata(title=title_p,
+                                             url=poster_url,
+                                             source="posterdb")
             collectionposters.append(collectionposter)
     
     return movieposters, showposters, collectionposters
@@ -411,7 +765,7 @@ def scrape_mediux(soup):
     mediux_filters = get_mediux_filters()
     year = 0    # Default year value
     title = "Untitled" # Default title value
-        
+
     for script in scripts:
         if 'files' in script.text:
             if 'set' in script.text:
@@ -425,7 +779,8 @@ def scrape_mediux(soup):
         else:
             media_type = "Movie"
                     
-    for data in poster_data:        
+    for data in poster_data:
+        is_show_backdrop, is_show_cover_art, is_season_cover_art = False, False, False
         if media_type == "Show":
 
             episodes = data_dict["set"]["show"]["seasons"]
@@ -446,17 +801,20 @@ def scrape_mediux(soup):
                 file_type = "title_card"
                 
             elif data["fileType"] == "backdrop":
-                season = "Backdrop"
+                season = None
                 episode = None
+                is_show_backdrop = True
                 file_type = "background"
             elif data["season_id"] is not None:
                 season_id = data["season_id"]["id"]
                 season_data = [episode for episode in episodes if episode["id"] == season_id][0]
-                episode = "Cover"
+                is_season_cover_art = True
+                episode = None
                 season = season_data["season_number"]
                 file_type = "season_cover"
             elif data["show_id"] is not None:
-                season = "Cover"
+                is_show_cover_art = True
+                season = None
                 episode = None
                 file_type = "show_cover"
 
@@ -474,18 +832,23 @@ def scrape_mediux(soup):
                     year = int(movie_data["release_date"][:4])
             elif data["collection_id"]:
                 title = data_dict["set"]["collection"]["collection_name"]
+            elif data["movie_id_backdrop"]:
+                print(f"movie backdrops not currently supported: {data}")
+                continue
             
         image_stub = data["id"]
         poster_url = f"{base_url}{image_stub}{quality_suffix}"
-        
+
         if media_type == "Show":
-            showposter = {}
-            showposter["title"] = show_name
-            showposter["season"] = season
-            showposter["episode"] = episode
-            showposter["url"] = poster_url
-            showposter["source"] = "mediux"
-            showposter["year"] = year
+            showposter = MediaMetadata(title=show_name,
+                                       url=poster_url,
+                                       season=season,
+                                       episode=episode,
+                                       year=year,
+                                       source="mediux",
+                                       show_cover_art=is_show_cover_art,
+                                       show_backdrop=is_show_backdrop,
+                                       season_cover_art=is_season_cover_art)
 
             if check_mediux_filter(mediux_filters=mediux_filters, filter=file_type):
                 showposters.append(showposter)
@@ -494,18 +857,16 @@ def scrape_mediux(soup):
         
         elif media_type == "Movie":
             if "Collection" in title:
-                collectionposter = {}
-                collectionposter["title"] = title
-                collectionposter["url"] = poster_url
-                collectionposter["source"] = "mediux"
+                collectionposter = MediaMetadata(title=title,
+                                       url=poster_url,
+                                       source="mediux")
                 collectionposters.append(collectionposter)
             
             else:
-                movieposter = {}
-                movieposter["title"] = title
-                movieposter["year"] = int(year)
-                movieposter["url"] = poster_url
-                movieposter["source"] = "mediux"
+                movieposter = MediaMetadata(title=title,
+                                       url=poster_url,
+                                       year=int(year),
+                                       source="mediux")
                 movieposters.append(movieposter)
             
     return movieposters, showposters, collectionposters
@@ -693,7 +1054,9 @@ def load_config(config_path="config.json"):
         "bulk_txt": "bulk_import.txt",
         "tv_library": ["TV Shows", "Anime"],
         "movie_library": ["Movies"],
-        "mediux_filters": ["title_card", "background", "season_cover", "show_cover"]
+        "mediux_filters": ["title_card", "background", "season_cover", "show_cover"],
+        "cache_enabled": True,
+        "cache_folder": ""
     }
 
     # Create the config.json file if it doesn't exist
@@ -717,14 +1080,17 @@ def load_config(config_path="config.json"):
         movie_library = config.get("movie_library", [])
         mediux_filters = config.get("mediux_filters", [])
         bulk_txt = config.get("bulk_txt", "bulk_import.txt")
-
+        cache_enabled = config.get("cache_enabled", True)
+        cache_folder = config.get("cache_folder", "")
         return {
             "base_url": base_url,
             "token": token,
             "tv_library": tv_library,
             "movie_library": movie_library,
             "mediux_filters": mediux_filters,
-            "bulk_txt": bulk_txt
+            "bulk_txt": bulk_txt,
+            "cache_enabled": cache_enabled,
+            "cache_folder": cache_folder
         }
     except Exception as e:
         update_error(f"Error loading config: {str(e)}")
@@ -739,7 +1105,9 @@ def save_config():
         "tv_library": [item.strip() for item in tv_library_text.get().strip().split(",")],
         "movie_library": [item.strip() for item in movie_library_text.get().strip().split(",")],
         "mediux_filters": mediux_filters_text.get().strip().split(", "), 
-        "bulk_txt": bulk_txt_entry.get().strip()
+        "bulk_txt": bulk_txt_entry.get().strip(),
+        "cache_enabled": cache_enabled_checkbox.get(),
+        "cache_folder": cache_folder_text.get().strip()
     }
 
     try:
@@ -782,7 +1150,18 @@ def load_and_update_ui():
 
     if mediux_filters_text is not None:
         mediux_filters_text.delete(0, ctk.END) 
-        mediux_filters_text.insert(0, ", ".join(config.get("mediux_filters", []))) 
+        mediux_filters_text.insert(0, ", ".join(config.get("mediux_filters", [])))
+
+    if cache_enabled_checkbox is not None:
+        if config.get("cache_enabled"):
+            cache_enabled_checkbox.select()
+        else:
+            cache_enabled_checkbox.deselect()
+
+    if cache_folder_text is not None:
+        cache_folder_text.delete(0, ctk.END)
+        cache_folder_text.insert(0, config.get("cache_folder", []))
+
         
     load_bulk_import_file()
     
@@ -807,6 +1186,7 @@ def run_url_scrape_thread():
     
 def run_bulk_import_scrape_thread():
     '''Run the bulk import scrape in a separate thread.'''
+
     global bulk_import_button
     bulk_import_list = bulk_import_text.get(1.0, ctk.END).strip().split("\n")
     valid_urls = parse_urls(bulk_import_list)
@@ -828,6 +1208,8 @@ def run_bulk_import_scrape_thread():
 def process_scrape_url(url):
     '''Process the URL scrape.'''
     try:
+        if not cache_setup(gui_mode=True):
+            return
         # Perform plex setup
         tv, movies = plex_setup(gui_mode=True)
 
@@ -856,6 +1238,8 @@ def process_scrape_url(url):
 def process_bulk_import(valid_urls):
     '''Process the bulk import scrape.'''
     try:
+        if not cache_setup(gui_mode=True):
+            return
         tv, movies = plex_setup(gui_mode=True)
 
         # Check if plex setup returned valid values
@@ -1001,7 +1385,7 @@ def create_button(container, text, command, color=None, primary=False, height=35
 
 def create_ui():
     '''Create the main UI window.'''
-    global app, global_context_menu, scrape_button, clear_button, mediux_filters_text, bulk_import_text, base_url_entry, token_entry, status_label, url_entry, app, bulk_import_button, tv_library_text, movie_library_text, bulk_txt_entry
+    global app, global_context_menu, scrape_button, clear_button, mediux_filters_text, bulk_import_text, base_url_entry, token_entry, status_label, url_entry, app, bulk_import_button, tv_library_text, movie_library_text, bulk_txt_entry, cache_enabled_checkbox, cache_folder_text
 
     app = ctk.CTk()
     ctk.set_appearance_mode("dark")
@@ -1161,19 +1545,41 @@ def create_ui():
     mediux_filters_text.bind("<Leave>", lambda event: on_hover_out(mediux_filters_label))
     bind_context_menu(mediux_filters_text)
 
+    # Cache Enabled Checkbox
+    cache_enabled_label = ctk.CTkLabel(settings_tab, text="Cache Enabled", text_color="#696969", font=("Roboto", 15))
+    cache_enabled_label.grid(row=6, column=0, pady=5, padx=10, sticky="w")
+    cache_enabled_checkbox = ctk.CTkCheckBox(settings_tab, text="", fg_color="#1C1E1E", text_color="#A1A1A1", onvalue=True, offvalue=False)
+    cache_enabled_checkbox.grid(row=6, column=1, pady=5, padx=10, sticky="ew")
+    cache_enabled_checkbox.bind("<Enter>", lambda event: on_hover_in(cache_enabled_label))
+    cache_enabled_checkbox.bind("<Leave>", lambda event: on_hover_out(cache_enabled_label))
+    bind_context_menu(cache_enabled_checkbox)
+
+    # Cache path
+    cache_folder_label = ctk.CTkLabel(settings_tab, text="Cache Folder", text_color="#696969", font=("Roboto", 15))
+    cache_folder_label.grid(row=7, column=0, pady=5, padx=10, sticky="w")
+    cache_folder_text = ctk.CTkEntry(settings_tab, placeholder_text="Enter a cache folder path", fg_color="#1C1E1E",
+                                     text_color="#A1A1A1", border_width=0, height=40)
+    cache_folder_text.grid(row=7, column=1, pady=5, padx=10, sticky="ew")
+    cache_folder_text.bind("<Enter>", lambda event: on_hover_in(cache_folder_label))
+    cache_folder_text.bind("<Leave>", lambda event: on_hover_out(cache_folder_label))
+    bind_context_menu(cache_folder_text)
+    
+
     settings_tab.grid_rowconfigure(0, weight=0)
     settings_tab.grid_rowconfigure(1, weight=0)
     settings_tab.grid_rowconfigure(2, weight=0)
     settings_tab.grid_rowconfigure(3, weight=0)
     settings_tab.grid_rowconfigure(4, weight=0)
     settings_tab.grid_rowconfigure(5, weight=0) 
-    settings_tab.grid_rowconfigure(6, weight=1) 
+    settings_tab.grid_rowconfigure(6, weight=0)
+    settings_tab.grid_rowconfigure(7, weight=0)
+    settings_tab.grid_rowconfigure(9, weight=1)
 
     # ? Load and Save Buttons (Anchored to the bottom)
     load_button = create_button(settings_tab, text="Reload", command=load_and_update_ui)
-    load_button.grid(row=7, column=0, pady=5, padx=5, ipadx=30, sticky="ew")
+    load_button.grid(row=10, column=0, pady=5, padx=5, ipadx=30, sticky="ew")
     save_button = create_button(settings_tab, text="Save", command=save_config, primary=True)
-    save_button.grid(row=7, column=1, pady=5, padx=5, sticky="ew")
+    save_button.grid(row=10, column=1, pady=5, padx=5, sticky="ew")
 
     settings_tab.grid_rowconfigure(7, weight=0, minsize=40)
 
@@ -1287,6 +1693,7 @@ def interactive_cli_loop(tv, movies, bulk_txt):
             print("Launching GUI...")
             tv, movies = plex_setup(gui_mode=True)
             create_ui()
+            cache_setup(gui_mode=True)
             break  # Exit CLI loop to launch GUI
 
         elif choice == '4':
@@ -1307,7 +1714,7 @@ def check_libraries(tv, movies):
 
 # * Main Initialization ---
 if __name__ == "__main__":
-    config = load_config() 
+    config = load_config()
     bulk_txt = config.get("bulk_txt", "bulk_import.txt")
     
     # Check for CLI arguments regardless of interactive_cli flag
@@ -1317,9 +1724,11 @@ if __name__ == "__main__":
         # Handle command-line arguments
         if command == 'gui':
             create_ui()
+            cache_setup(gui_mode=True)
             tv, movies = plex_setup(gui_mode=True)
 
         elif command == 'bulk':
+            cache_setup(gui_mode=False)
             tv, movies = plex_setup(gui_mode=False)
             if len(sys.argv) > 2:
                 file_path = sys.argv[2]
@@ -1331,6 +1740,7 @@ if __name__ == "__main__":
         elif "/user/" in command:
             scrape_entire_user(command)
         else:
+            cache_setup(gui_mode=False)
             tv, movies = plex_setup(gui_mode=False)
             set_posters(command, tv, movies)
     
@@ -1338,6 +1748,7 @@ if __name__ == "__main__":
         # If no CLI arguments, proceed with UI creation (if not in interactive CLI mode)
         if not interactive_cli:
             create_ui() 
+            cache_setup(gui_mode=True)
             tv, movies = plex_setup(gui_mode=True)
         else:
             sys.stdout.reconfigure(encoding='utf-8') 
@@ -1345,6 +1756,7 @@ if __name__ == "__main__":
 
             # Perform CLI plex_setup if GUI flag is not present
             if not gui_flag:
+                cache_setup(gui_mode=False)
                 tv, movies = plex_setup(gui_mode=False)
 
             # Handle interactive CLI
