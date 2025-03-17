@@ -1,8 +1,7 @@
 # main.py
-from fastapi import FastAPI, BackgroundTasks, HTTPException, UploadFile, File
-from fastapi.responses import JSONResponse
 import logging
-from typing import List
+from fastapi import FastAPI, BackgroundTasks, HTTPException
+from fastapi.responses import JSONResponse
 from config import Settings
 from plex_service import PlexService
 from scrapers import process_url

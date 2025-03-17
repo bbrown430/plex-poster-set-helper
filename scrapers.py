@@ -1,5 +1,6 @@
 # scrapers.py
 import requests
+import json
 from bs4 import BeautifulSoup
 import math
 import time
@@ -7,6 +8,7 @@ import re
 import logging
 from typing import Tuple, List, Dict
 from poster_uploader import handle_posters
+from config import Settings
 
 logger = logging.getLogger(__name__)
 
@@ -16,9 +18,14 @@ def cook_soup(url: str) -> BeautifulSoup:
         'Sec-Ch-Ua-Mobile': '?0',
         'Sec-Ch-Ua-Platform': 'Windows'
     }
+    
     response = requests.get(url, headers=headers)
-    response.raise_for_status()
-    return BeautifulSoup(response.text, 'html.parser')
+    
+    if response.status_code == 200 or (response.status_code == 500 and "mediux.pro" in url):
+        soup = BeautifulSoup(response.text, 'html.parser')
+        return soup
+    else:   
+        response.raise_for_status()
 
 def get_user_page_count(soup: BeautifulSoup) -> int:
     """Calculate number of pages for user uploads"""
@@ -142,12 +149,36 @@ def scrape_posterdb(soup):
     
     return movieposters, showposters, collectionposters
 
+from config import Settings
+
+def get_mediux_filters():
+    """Get MediUX filters from configuration"""
+    settings = Settings()
+    return settings.mediux_filters or None
+
+def check_mediux_filter(mediux_filters, filter):
+    return filter in mediux_filters if mediux_filters else True
+
+def parse_string_to_dict(input_string):
+    # Remove unnecessary replacements
+    input_string = input_string.replace('\\\\\\\"', "")
+    input_string = input_string.replace("\\","")
+    input_string = input_string.replace("u0026", "&")
+
+    # Find JSON data in the input string
+    json_start_index = input_string.find('{')
+    json_end_index = input_string.rfind('}')
+    json_data = input_string[json_start_index:json_end_index+1]
+
+    # Parse JSON data into a dictionary
+    parsed_dict = json.loads(json_data)
+    return parsed_dict
+
 def scrape_mediux(soup):
     base_url = "https://mediux.pro/_next/image?url=https%3A%2F%2Fapi.mediux.pro%2Fassets%2F"
     quality_suffix = "&w=3840&q=80"
     
     scripts = soup.find_all('script')
-    
 
     media_type = None
     showposters = []
