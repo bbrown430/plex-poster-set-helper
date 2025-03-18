@@ -21,7 +21,7 @@ app.add_middleware(
 )
 
 # Initialize Plex connection on startup
-@app.on_event("startup")
+@app.lifespan("startup")
 async def startup_event():
     try:
         app.state.plex_service = PlexService(settings)
