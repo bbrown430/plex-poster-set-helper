@@ -1,6 +1,7 @@
 # main.py
 import logging
 from fastapi import FastAPI, BackgroundTasks, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from config import Settings
 from plex_service import PlexService
@@ -9,6 +10,15 @@ from scrapers import process_url
 app = FastAPI()
 settings = Settings()
 logger = logging.getLogger(__name__)
+
+# Enable CORS
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  # Adjust this for security in production
+    allow_credentials=True,
+    allow_methods=["*"],  # Allow all HTTP methods
+    allow_headers=["*"],  # Allow all headers
+)
 
 # Initialize Plex connection on startup
 @app.on_event("startup")
