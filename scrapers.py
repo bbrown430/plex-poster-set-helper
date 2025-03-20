@@ -3,10 +3,7 @@ import requests
 import json
 from bs4 import BeautifulSoup
 import math
-import time
-import re
 import logging
-from typing import Tuple, List, Dict
 from poster_uploader import handle_posters
 from config import Settings
 
@@ -37,13 +34,33 @@ def get_user_page_count(soup: BeautifulSoup) -> int:
         return 1
 
 def process_url(url: str, tv_libs, movie_libs):
-    """Main processing function for a single URL"""
+    """Main processing function for a single URL that returns processed data."""
     try:
+        # Scrape the posters
         movie_posters, show_posters, collection_posters = scrape(url)
-        handle_posters(movie_posters, show_posters, collection_posters, tv_libs, movie_libs)
+
+        # Handle posters and get processing results
+        result = handle_posters(movie_posters, show_posters, collection_posters, tv_libs, movie_libs)
+
+        # Return structured response data
+        return {
+            "url": url,
+            "status": "success",
+            "processed": {
+                "movies": len(movie_posters),
+                "shows": len(show_posters),
+                "collections": len(collection_posters),
+            },
+            "details": result  # If handle_posters returns useful info, include it
+        }
     except Exception as e:
         logger.error(f"Error processing {url}: {str(e)}")
-        raise
+        return {
+            "url": url,
+            "status": "error",
+            "message": str(e)
+        }
+
 
 def scrape(url: str):
     if ("theposterdb.com" in url):
@@ -56,8 +73,8 @@ def scrape(url: str):
             if set_url is not None:
                 set_soup = cook_soup(set_url)
                 return scrape_posterdb(set_soup)
-            else:
-                sys.exit("Poster set not found. Check the link you are inputting.")
+            #else:
+                #sys.exit("Poster set not found. Check the link you are inputting.")
             #menu_selection = input("You've provided the link to a single poster, rather than a set. \n \t 1. Upload entire set\n \t 2. Upload single poster \nType your selection: ")
     elif ("mediux.pro" in url) and ("sets" in url):
         soup = cook_soup(url)

@@ -2,13 +2,14 @@
 import time
 import logging
 from typing import List
+import scrapers
 
 logger = logging.getLogger(__name__)
 
 def process_url(url: str, tv_libs, movie_libs):
     """Main processing function for a single URL"""
     try:
-        movie_posters, show_posters, collection_posters = scrape(url)
+        movie_posters, show_posters, collection_posters = scrapers.scrape(url)
         handle_posters(movie_posters, show_posters, collection_posters, tv_libs, movie_libs)
     except Exception as e:
         logger.error(f"Error processing {url}: {str(e)}")
@@ -110,6 +111,22 @@ def upload_movie_poster(poster, movies):
     else:
         print(f'{poster["title"]} not found in any library.')
 
+def find_collection(library, poster):
+    collections = []
+    for lib in library:
+        try:
+            movie_collections = lib.collections()
+            for plex_collection in movie_collections:
+                if plex_collection.title == poster["title"]:
+                    collections.append(plex_collection)
+        except:
+            pass
+
+    if collections:
+        return collections
+
+    #print(f"{poster['title']} collection not found, skipping.")
+    return None
 
 def upload_collection_poster(poster, movies):
     collection_items = find_collection(movies, poster)
