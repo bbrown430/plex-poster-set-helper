@@ -93,8 +93,6 @@ def upload_tv_poster(poster, tv):
                     time.sleep(6)  # too many requests prevention
             except:
                 print(f"{poster['title']} - Season {poster['season']} not found in {tv_show.librarySectionTitle} library, skipping.")
-    else:
-        print(f"{poster['title']} not found in any library.")
 
 
 def upload_movie_poster(poster, movies):
@@ -108,8 +106,6 @@ def upload_movie_poster(poster, movies):
                     time.sleep(6)  # too many requests prevention
             except:
                 print(f'Unable to upload art for {poster["title"]} in {movie_item.librarySectionTitle} library.')
-    else:
-        print(f'{poster["title"]} not found in any library.')
 
 def find_collection(library, poster):
     collections = []
@@ -139,5 +135,3 @@ def upload_collection_poster(poster, movies):
                     time.sleep(6)  # too many requests prevention
             except:
                 print(f'Unable to upload art for {poster["title"]} in {collection.librarySectionTitle} library.')
-    else:
-        print(f'{poster["title"]} collection not found in any library.')

@@ -65,3 +65,7 @@ def is_valid_url(url: str) -> bool:
 def is_not_comment(url: str) -> bool:
     """Check if URL is not a comment"""
     return not url.startswith(("//", "#")) and bool(url.strip())
+
+if __name__ == "__main__":
+    import uvicorn
+    uvicorn.run(app, host="0.0.0.0", port=38100)
