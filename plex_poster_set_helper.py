@@ -126,7 +126,7 @@ def plex_setup(gui_mode=False):
 
 def cook_soup(url):  
     headers = { 
-               'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36', 
+               'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36',
                'Sec-Ch-Ua-Mobile': '?0', 
                'Sec-Ch-Ua-Platform': 'Windows' 
             }
@@ -401,7 +401,7 @@ def check_mediux_filter(mediux_filters, filter):
     return filter in mediux_filters if mediux_filters else True
 
 def scrape_mediux(soup):
-    base_url = "https://mediux.pro/_next/image?url=https%3A%2F%2Fapi.mediux.pro%2Fassets%2F"
+    base_url = "https://api.mediux.pro/assets/"
     quality_suffix = "&w=3840&q=80"
     scripts = soup.find_all('script')
     media_type = None
