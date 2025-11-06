@@ -4,25 +4,20 @@
 # --- Movies ---------------------------------------------
 
 // The Dark Knight Collection
-https://theposterdb.com/set/13035
-
-// Pirates of the Caribbean:
-https://mediux.pro/sets/12816
-
-// The Terminator
-https://mediux.pro/sets/10551
 
 
 # --- TV Shows -----------------------------------------
 
-// Futurama
-https://mediux.pro/sets/21200
-https://mediux.pro/sets/1993
+// Monarch: Legacy of Monsters (2023)
+// https://theposterdb.com/poster/433968
 
-// Bob's Burgers
-https://mediux.pro/sets/208
-https://mediux.pro/sets/27633
+# --- Creators -----------------------------------------
 
-// Archer
-https://mediux.pro/sets/10988
-https://mediux.pro/sets/4394
+# Creator: fwlolx
+https://theposterdb.com/user/fwlolx
+
+# Creator: Sevi
+https://theposterdb.com/user/Sevi
+
+# Creator: GrandSlam4Par
+https://theposterdb.com/user/GrandSlam4Par

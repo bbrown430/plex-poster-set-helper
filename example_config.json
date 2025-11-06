@@ -14,5 +14,6 @@
         "background",
         "season_cover",
         "show_cover"
-    ]
+    ],
+    "use_main_poster_for_missing_seasons": true
 }

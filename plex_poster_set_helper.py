@@ -13,14 +13,427 @@ import tkinter as tk
 import threading
 import xml.etree.ElementTree
 import atexit
+import signal
 from PIL import Image
+from itertools import cycle
+from collections import defaultdict
+import random
 
 
 #! Interactive CLI mode flag
 interactive_cli = True   # Set to False when building the executable with PyInstaller for it launches the GUI by default
 
+#! Global tracking for "first creator wins" behavior
+# Tracks which shows/movies/collections have already been processed
+# This is loaded from/saved to .poster_cache.json for persistence
+CACHE_FILE = ".poster_cache.json"
+processed_items = {
+    'tv_shows': set(),      # Stores (title, season) tuples
+    'movies': set(),        # Stores title strings
+    'collections': set()    # Stores collection name strings
+}
+
+#! Tracking for missing/unmatched items (per creator session)
+missing_items = {
+    'shows_no_match': [],           # Shows with no poster matches at all
+    'shows_partial_match': {},      # Shows with missing seasons: {show_title: [missing_seasons]}
+    'movies_no_match': [],          # Movies with no matches
+    'collections_no_match': []      # Collections with no matches
+}
+
+#! Rate limiting configuration (best practices for avoiding bans)
+RATE_LIMIT_CONFIG = {
+    'upload_delay_min': 5.0,      # Minimum seconds between uploads (randomized)
+    'upload_delay_max': 8.0,      # Maximum seconds between uploads
+    'scrape_delay_min': 0.8,      # Minimum seconds between page scrapes
+    'scrape_delay_max': 1.5,      # Maximum seconds between page scrapes
+    'max_retries': 3,             # Maximum retry attempts on errors
+    'backoff_factor': 2.0,        # Exponential backoff multiplier
+    'respect_429': True           # Respect HTTP 429 Rate Limit responses
+}
+
+# Session for connection pooling and better performance
+http_session = None
+
+#@ ---------------------- SIGNAL HANDLERS ----------------------
+def signal_handler(sig, frame):
+    """Handle Ctrl+C gracefully by saving cache before exit."""
+    print("\n\n⚠️  Interrupted by user. Saving progress...")
+    save_cache()
+    print("✓ Cache saved successfully. Exiting.")
+    sys.exit(0)
+
+# Register signal handler for Ctrl+C
+signal.signal(signal.SIGINT, signal_handler)
+
 
 #@ ---------------------- CORE FUNCTIONS ----------------------
+
+#@ ---------------------- PROGRESS SPINNER ----------------------
+class Spinner:
+    """Animated spinner for showing progress without cluttering output."""
+    def __init__(self, message="Processing"):
+        self.spinner = cycle(['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'])
+        self.message = message
+        self.running = False
+        self.thread = None
+
+    def spin(self):
+        while self.running:
+            sys.stdout.write(f'\r{next(self.spinner)} {self.message}...')
+            sys.stdout.flush()
+            time.sleep(0.1)
+        sys.stdout.write('\r' + ' ' * (len(self.message) + 10) + '\r')
+        sys.stdout.flush()
+
+    def start(self):
+        self.running = True
+        self.thread = threading.Thread(target=self.spin)
+        self.thread.start()
+
+    def stop(self):
+        self.running = False
+        if self.thread:
+            self.thread.join()
+
+#@ ---------------------- TIME FORMATTING ----------------------
+def format_elapsed_time(seconds):
+    """Format elapsed time in a human-readable format.
+
+    Args:
+        seconds: Number of seconds elapsed
+
+    Returns:
+        Formatted string like "1h 23m 45s" or "5m 30s" or "45s"
+    """
+    hours = int(seconds // 3600)
+    minutes = int((seconds % 3600) // 60)
+    secs = int(seconds % 60)
+
+    if hours > 0:
+        return f"{hours}h {minutes}m {secs}s"
+    elif minutes > 0:
+        return f"{minutes}m {secs}s"
+    else:
+        return f"{secs}s"
+
+#@ ---------------------- MISSING ITEMS TRACKING ----------------------
+def clear_missing_items_tracking():
+    """Clear the missing items tracking for a new creator session."""
+    global missing_items
+    missing_items = {
+        'shows_no_match': [],
+        'shows_partial_match': {},
+        'movies_no_match': [],
+        'collections_no_match': []
+    }
+
+def print_missing_items_summary():
+    """Print a summary of items that couldn't be matched."""
+    global missing_items
+
+    has_missing = (
+        missing_items['shows_no_match'] or
+        missing_items['shows_partial_match'] or
+        missing_items['movies_no_match'] or
+        missing_items['collections_no_match']
+    )
+
+    if not has_missing:
+        return  # Nothing to report
+
+    print(f"\n{'─'*60}")
+    print("📋 Missing Posters Summary")
+    print(f"{'─'*60}")
+
+    # Shows with no posters at all
+    if missing_items['shows_no_match']:
+        print(f"\n❌ Shows in your library with no posters found ({len(missing_items['shows_no_match'])}):")
+        for show in sorted(missing_items['shows_no_match']):
+            print(f"   • {show}")
+
+    # Shows with missing seasons
+    if missing_items['shows_partial_match']:
+        print(f"\n⚠️  Shows in your library with missing seasons ({len(missing_items['shows_partial_match'])}):")
+        for show, seasons in sorted(missing_items['shows_partial_match'].items()):
+            season_list = ", ".join(f"S{s}" for s in sorted(seasons))
+            print(f"   • {show}: {season_list}")
+
+    # Movies with no posters
+    if missing_items['movies_no_match']:
+        print(f"\n❌ Movies in your library with no posters found ({len(missing_items['movies_no_match'])}):")
+        for movie in sorted(missing_items['movies_no_match']):
+            print(f"   • {movie}")
+
+    # Collections with no posters
+    if missing_items['collections_no_match']:
+        print(f"\n❌ Collections in your library with no posters found ({len(missing_items['collections_no_match'])}):")
+        for collection in sorted(missing_items['collections_no_match']):
+            print(f"   • {collection}")
+
+    print(f"{'─'*60}\n")
+
+#@ ---------------------- CACHE MANAGEMENT ----------------------
+def load_cache():
+    """Load the processed items cache from disk."""
+    global processed_items
+
+    if os.path.exists(CACHE_FILE):
+        try:
+            with open(CACHE_FILE, 'r') as f:
+                data = json.load(f)
+
+            # Convert lists back to sets (JSON doesn't support sets)
+            processed_items['tv_shows'] = set(tuple(item) for item in data.get('tv_shows', []))
+            processed_items['movies'] = set(data.get('movies', []))
+            processed_items['collections'] = set(data.get('collections', []))
+
+            total_items = len(processed_items['tv_shows']) + len(processed_items['movies']) + len(processed_items['collections'])
+            print(f"📂 Loaded cache: {total_items} items already processed")
+            print(f"   TV shows: {len(processed_items['tv_shows'])}, Movies: {len(processed_items['movies'])}, Collections: {len(processed_items['collections'])}")
+            return True
+        except Exception as e:
+            print(f"⚠️  Warning: Could not load cache file: {e}")
+            return False
+    return False
+
+def save_cache(scanning_state=None, preserve_scanning=True):
+    """Save the processed items cache to disk for crash recovery.
+
+    Args:
+        scanning_state: Optional dict with scanning progress data to update
+        preserve_scanning: If True and scanning_state is None, preserve existing scanning state
+    """
+    try:
+        # Convert sets to lists for JSON serialization
+        data = {
+            'tv_shows': [list(item) for item in processed_items['tv_shows']],
+            'movies': list(processed_items['movies']),
+            'collections': list(processed_items['collections'])
+        }
+
+        # Handle scanning state
+        if scanning_state:
+            # Explicitly provided scanning state - use it
+            data['scanning'] = scanning_state
+        elif preserve_scanning and os.path.exists(CACHE_FILE):
+            # Preserve existing scanning state from cache file
+            try:
+                with open(CACHE_FILE, 'r') as f:
+                    old_data = json.load(f)
+                if 'scanning' in old_data:
+                    data['scanning'] = old_data['scanning']
+            except:
+                pass  # If we can't read old data, just continue without scanning state
+
+        with open(CACHE_FILE, 'w') as f:
+            json.dump(data, f, indent=2)
+
+        return True
+    except Exception as e:
+        print(f"⚠️  Warning: Could not save cache file: {e}")
+        return False
+
+def clear_cache():
+    """Clear the cache file and in-memory tracking."""
+    global processed_items
+
+    processed_items = {
+        'tv_shows': set(),
+        'movies': set(),
+        'collections': set()
+    }
+
+    if os.path.exists(CACHE_FILE):
+        try:
+            os.remove(CACHE_FILE)
+            print("✓ Cache cleared successfully")
+            return True
+        except Exception as e:
+            print(f"⚠️  Warning: Could not delete cache file: {e}")
+            return False
+    else:
+        print("ℹ️  No cache file to clear")
+        return True
+
+def load_scanning_state():
+    """Load incomplete scanning state from cache."""
+    if not os.path.exists(CACHE_FILE):
+        return None
+
+    try:
+        with open(CACHE_FILE, 'r') as f:
+            data = json.load(f)
+        return data.get('scanning')
+    except Exception as e:
+        print(f"⚠️  Warning: Could not load scanning state: {e}")
+        return None
+
+def clear_scanning_state():
+    """Clear scanning state from cache after successful completion."""
+    if not os.path.exists(CACHE_FILE):
+        return
+
+    try:
+        with open(CACHE_FILE, 'r') as f:
+            data = json.load(f)
+
+        # Remove scanning key if it exists
+        if 'scanning' in data:
+            del data['scanning']
+
+            with open(CACHE_FILE, 'w') as f:
+                json.dump(data, f, indent=2)
+    except Exception as e:
+        print(f"⚠️  Warning: Could not clear scanning state: {e}")
+
+#@ ---------------------- RATE LIMITING ----------------------
+def get_http_session():
+    """Get or create a persistent HTTP session for connection pooling."""
+    global http_session
+    if http_session is None:
+        http_session = requests.Session()
+        # Configure session with retries (but we'll handle rate limiting manually)
+        adapter = requests.adapters.HTTPAdapter(
+            pool_connections=10,
+            pool_maxsize=20,
+            max_retries=0  # We handle retries manually
+        )
+        http_session.mount('http://', adapter)
+        http_session.mount('https://', adapter)
+    return http_session
+
+def smart_delay(operation_type='scrape'):
+    """
+    Implement human-like delays with randomization.
+
+    Args:
+        operation_type: 'scrape' for page fetches, 'upload' for poster uploads
+    """
+    if operation_type == 'upload':
+        delay = random.uniform(
+            RATE_LIMIT_CONFIG['upload_delay_min'],
+            RATE_LIMIT_CONFIG['upload_delay_max']
+        )
+    else:  # scrape
+        delay = random.uniform(
+            RATE_LIMIT_CONFIG['scrape_delay_min'],
+            RATE_LIMIT_CONFIG['scrape_delay_max']
+        )
+
+    time.sleep(delay)
+
+def exponential_backoff(attempt, base_delay=1.0):
+    """
+    Calculate exponential backoff delay with jitter.
+
+    Args:
+        attempt: Retry attempt number (0-indexed)
+        base_delay: Base delay in seconds
+
+    Returns:
+        Delay in seconds with random jitter
+    """
+    # Exponential backoff: base * (backoff_factor ^ attempt)
+    delay = base_delay * (RATE_LIMIT_CONFIG['backoff_factor'] ** attempt)
+    # Add jitter (±20% randomness)
+    jitter = delay * random.uniform(-0.2, 0.2)
+    return delay + jitter
+
+def handle_rate_limit_response(response):
+    """
+    Check if response indicates rate limiting and handle appropriately.
+
+    Args:
+        response: requests.Response object
+
+    Returns:
+        True if rate limited and we should retry, False otherwise
+    """
+    if response.status_code == 429:  # Too Many Requests
+        if RATE_LIMIT_CONFIG['respect_429']:
+            # Check for Retry-After header
+            retry_after = response.headers.get('Retry-After')
+            if retry_after:
+                try:
+                    wait_time = int(retry_after)
+                    print(f"⚠️  Rate limited by server. Waiting {wait_time} seconds...")
+                    time.sleep(wait_time)
+                    return True
+                except ValueError:
+                    # Retry-After might be a date, just use default backoff
+                    pass
+
+            # No Retry-After header, use exponential backoff
+            wait_time = exponential_backoff(1, base_delay=10.0)
+            print(f"⚠️  Rate limited by server. Waiting {wait_time:.1f} seconds...")
+            time.sleep(wait_time)
+            return True
+
+    return False
+
+#@ ---------------------- POSTER GROUPING ----------------------
+def group_posters_by_show(showposters):
+    """
+    Group TV show posters by show title, handling multiple sets intelligently.
+
+    When a creator has multiple poster sets for the same show (different styles),
+    this function chooses the set with the most complete season coverage.
+
+    Returns: {show_title: {'cover': poster, 'seasons': {season_num: poster}}}
+    """
+    # First, group by show title AND set ID
+    sets_by_show = defaultdict(lambda: defaultdict(lambda: {'cover': None, 'seasons': {}}))
+
+    for poster in showposters:
+        title = poster['title']
+        season = poster['season']
+        set_id = poster.get('set_id', 'unknown')  # Default to 'unknown' if no set_id
+
+        if season == "Cover":
+            sets_by_show[title][set_id]['cover'] = poster
+        else:
+            sets_by_show[title][set_id]['seasons'][season] = poster
+
+    # Now choose the best set for each show (most complete coverage)
+    final_grouped = {}
+
+    for show_title, sets in sets_by_show.items():
+        if len(sets) == 1:
+            # Only one set for this show, use it
+            final_grouped[show_title] = list(sets.values())[0]
+        else:
+            # Multiple sets - choose the one with the most seasons
+            best_set_id = None
+            best_season_count = 0
+
+            for set_id, set_data in sets.items():
+                season_count = len(set_data['seasons'])
+                # Prioritize sets that have a cover poster
+                has_cover = set_data['cover'] is not None
+
+                # Score: season count + bonus for having cover
+                score = season_count + (10 if has_cover else 0)
+
+                if score > best_season_count:
+                    best_season_count = score
+                    best_set_id = set_id
+
+            # Print info about multiple sets being detected
+            set_info = ", ".join([f"Set {sid}: {len(data['seasons'])} seasons" for sid, data in sets.items()])
+            print(f"  ℹ️  Multiple poster sets found for '{show_title}' - choosing Set {best_set_id} ({len(sets[best_set_id]['seasons'])} seasons)")
+            print(f"      Available: {set_info}")
+
+            final_grouped[show_title] = sets[best_set_id]
+
+    return final_grouped
+
+def extract_username_from_url(url):
+    """Extract username from ThePosterDB user URL."""
+    match = re.search(r'/user/([^/?]+)', url)
+    return match.group(1) if match else "Unknown"
+
+#@ ---------------------- PLEX SETUP ----------------------
 
 def plex_setup(gui_mode=False):
     global plex
@@ -124,20 +537,69 @@ def plex_setup(gui_mode=False):
 
 
 
-def cook_soup(url):  
-    headers = { 
-               'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36', 
-               'Sec-Ch-Ua-Mobile': '?0', 
-               'Sec-Ch-Ua-Platform': 'Windows' 
-            }
+def cook_soup(url):
+    """
+    Fetch and parse a webpage with improved rate limiting and retry logic.
 
-    response = requests.get(url, headers=headers)
+    Args:
+        url: URL to fetch
 
-    if response.status_code == 200 or (response.status_code == 500 and "mediux.pro" in url):
-        soup = BeautifulSoup(response.text, 'html.parser')
-        return soup
-    else:
-        sys.exit(f"Failed to retrieve the page. Status code: {response.status_code}")    
+    Returns:
+        BeautifulSoup object or exits on failure
+    """
+    headers = {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36',
+        'Sec-Ch-Ua-Mobile': '?0',
+        'Sec-Ch-Ua-Platform': 'Windows'
+    }
+
+    session = get_http_session()
+
+    # Implement retry logic with exponential backoff
+    for attempt in range(RATE_LIMIT_CONFIG['max_retries']):
+        try:
+            # Add delay before request (human-like behavior)
+            if attempt > 0:
+                # Exponential backoff on retries
+                backoff_delay = exponential_backoff(attempt)
+                time.sleep(backoff_delay)
+            else:
+                # Normal scrape delay (randomized)
+                smart_delay('scrape')
+
+            response = session.get(url, headers=headers, timeout=30)
+
+            # Handle rate limiting
+            if handle_rate_limit_response(response):
+                continue  # Retry after waiting
+
+            # Success cases
+            if response.status_code == 200 or (response.status_code == 500 and "mediux.pro" in url):
+                soup = BeautifulSoup(response.text, 'html.parser')
+                return soup
+
+            # Other errors
+            if attempt < RATE_LIMIT_CONFIG['max_retries'] - 1:
+                print(f"⚠️  HTTP {response.status_code} for {url}. Retrying (attempt {attempt + 1}/{RATE_LIMIT_CONFIG['max_retries']})...")
+                continue
+            else:
+                sys.exit(f"Failed to retrieve the page after {RATE_LIMIT_CONFIG['max_retries']} attempts. Status code: {response.status_code}")
+
+        except requests.exceptions.Timeout:
+            if attempt < RATE_LIMIT_CONFIG['max_retries'] - 1:
+                print(f"⚠️  Request timeout. Retrying (attempt {attempt + 1}/{RATE_LIMIT_CONFIG['max_retries']})...")
+                continue
+            else:
+                sys.exit(f"Failed to retrieve the page after {RATE_LIMIT_CONFIG['max_retries']} attempts: Timeout")
+
+        except requests.exceptions.RequestException as e:
+            if attempt < RATE_LIMIT_CONFIG['max_retries'] - 1:
+                print(f"⚠️  Request error: {e}. Retrying (attempt {attempt + 1}/{RATE_LIMIT_CONFIG['max_retries']})...")
+                continue
+            else:
+                sys.exit(f"Failed to retrieve the page after {RATE_LIMIT_CONFIG['max_retries']} attempts: {e}")
+
+    sys.exit(f"Failed to retrieve the page. Exhausted all retry attempts.")    
 
 
 def title_cleaner(string):
@@ -185,8 +647,8 @@ def find_in_library(library, poster):
     
     if items:
         return items
-    
-    print(f"{poster['title']} not found, skipping.")
+
+    # Silently return None - tracking happens in upload functions
     return None
 
 
@@ -208,92 +670,280 @@ def find_collection(library, poster):
     return None
 
 
-def upload_tv_poster(poster, tv):
+def upload_tv_poster(poster, tv, creator="Unknown", silent=False):
+    """Upload TV poster and return success status.
+
+    Returns:
+        True: Successfully uploaded
+        False: Not found in Plex library
+        None: Already in cache (skip)
+    """
+    global processed_items
+
+    # Create a unique key for this show+season combination
+    item_key = (poster['title'], poster['season'])
+
+    # Check if already processed by a previous creator
+    if item_key in processed_items['tv_shows']:
+        return None  # Already processed, skip silently
+
     tv_show_items = find_in_library(tv, poster)
     if tv_show_items:
         for tv_show in tv_show_items:
             try:
                 if poster["season"] == "Cover":
                     upload_target = tv_show
-                    print(f"Uploaded cover art for {poster['title']} - {poster['season']} in {tv_show.librarySectionTitle} library.")
+                    if not silent:
+                        print(f"✓ [{creator}] Uploaded cover art for {poster['title']} - {poster['season']} in {tv_show.librarySectionTitle} library.")
                 elif poster["season"] == 0:
                     upload_target = tv_show.season("Specials")
-                    print(f"Uploaded art for {poster['title']} - Specials in {tv_show.librarySectionTitle} library.")
+                    if not silent:
+                        print(f"✓ [{creator}] Uploaded art for {poster['title']} - Specials in {tv_show.librarySectionTitle} library.")
                 elif poster["season"] == "Backdrop":
                     upload_target = tv_show
-                    print(f"Uploaded background art for {poster['title']} in {tv_show.librarySectionTitle} library.")
+                    if not silent:
+                        print(f"✓ [{creator}] Uploaded background art for {poster['title']} in {tv_show.librarySectionTitle} library.")
                 elif poster["season"] >= 1:
                     if poster["episode"] == "Cover":
                         upload_target = tv_show.season(poster["season"])
-                        print(f"Uploaded art for {poster['title']} - Season {poster['season']} in {tv_show.librarySectionTitle} library.")
+                        if not silent:
+                            print(f"✓ [{creator}] Uploaded art for {poster['title']} - Season {poster['season']} in {tv_show.librarySectionTitle} library.")
                     elif poster["episode"] is None:
                         upload_target = tv_show.season(poster["season"])
-                        print(f"Uploaded art for {poster['title']} - Season {poster['season']} in {tv_show.librarySectionTitle} library.")
+                        if not silent:
+                            print(f"✓ [{creator}] Uploaded art for {poster['title']} - Season {poster['season']} in {tv_show.librarySectionTitle} library.")
                     elif poster["episode"] is not None:
                         try:
                             upload_target = tv_show.season(poster["season"]).episode(poster["episode"])
-                            print(f"Uploaded art for {poster['title']} - Season {poster['season']} Episode {poster['episode']} in {tv_show.librarySectionTitle} library..")
+                            if not silent:
+                                print(f"✓ [{creator}] Uploaded art for {poster['title']} - Season {poster['season']} Episode {poster['episode']} in {tv_show.librarySectionTitle} library.")
                         except:
-                            print(f"{poster['title']} - {poster['season']} Episode {poster['episode']} not found in {tv_show.librarySectionTitle} library, skipping.")
+                            pass  # Silent failure
                 if poster["season"] == "Backdrop":
                     try:
                         upload_target.uploadArt(url=poster['url'])
                     except:
-                        print("Unable to upload last poster.")
+                        pass  # Silent failure
                 else:
                     try:
                         upload_target.uploadPoster(url=poster['url'])
                     except:
-                        print("Unable to upload last poster.")
+                        pass  # Silent failure
                 if poster["source"] == "posterdb":
-                    time.sleep(6)  # too many requests prevention
+                    smart_delay('upload')  # Human-like delay with randomization
+
+                # Mark as processed after successful upload
+                processed_items['tv_shows'].add(item_key)
+                return True
             except:
-                print(f"{poster['title']} - Season {poster['season']} not found in {tv_show.librarySectionTitle} library, skipping.")
+                pass  # Silent failure, no "not found" spam
+        return False
     else:
-        print(f"{poster['title']} not found in any library.")
+        return False  # Not found, but don't print anything
 
 
-def upload_movie_poster(poster, movies):
+def upload_movie_poster(poster, movies, creator="Unknown", silent=False):
+    """Upload movie poster and return success status.
+
+    Returns:
+        True: Successfully uploaded
+        False: Not found in Plex library
+        None: Already in cache (skip)
+    """
+    global processed_items
+
+    # Check if already processed by a previous creator
+    if poster['title'] in processed_items['movies']:
+        return None  # Already processed, skip silently
+
     movie_items = find_in_library(movies, poster)
     if movie_items:
         for movie_item in movie_items:
             try:
                 movie_item.uploadPoster(poster["url"])
-                print(f'Uploaded art for {poster["title"]} in {movie_item.librarySectionTitle} library.')
+                if not silent:
+                    print(f'✓ [{creator}] Uploaded art for {poster["title"]} in {movie_item.librarySectionTitle} library.')
                 if poster["source"] == "posterdb":
-                    time.sleep(6)  # too many requests prevention
+                    smart_delay('upload')  # Human-like delay with randomization
+
+                # Mark as processed after successful upload
+                processed_items['movies'].add(poster['title'])
+                return True
             except:
-                print(f'Unable to upload art for {poster["title"]} in {movie_item.librarySectionTitle} library.')
+                pass  # Silent failure
+        return False
     else:
-        print(f'{poster["title"]} not found in any library.')
+        return False  # Not found, but don't print anything
 
 
-def upload_collection_poster(poster, movies):
+def upload_collection_poster(poster, movies, creator="Unknown", silent=False):
+    """Upload collection poster and return success status.
+
+    Returns:
+        True: Successfully uploaded
+        False: Not found in Plex library
+        None: Already in cache (skip)
+    """
+    global processed_items
+
+    # Check if already processed by a previous creator
+    if poster['title'] in processed_items['collections']:
+        return None  # Already processed, skip silently
+
     collection_items = find_collection(movies, poster)
     if collection_items:
         for collection in collection_items:
             try:
                 collection.uploadPoster(poster["url"])
-                print(f'Uploaded art for {poster["title"]} in {collection.librarySectionTitle} library.')
+                if not silent:
+                    print(f'✓ [{creator}] Uploaded art for {poster["title"]} in {collection.librarySectionTitle} library.')
                 if poster["source"] == "posterdb":
-                    time.sleep(6)  # too many requests prevention
+                    smart_delay('upload')  # Human-like delay with randomization
+
+                # Mark as processed after successful upload
+                processed_items['collections'].add(poster['title'])
+                return True
             except:
-                print(f'Unable to upload art for {poster["title"]} in {collection.librarySectionTitle} library.')
+                pass  # Silent failure
+        return False
     else:
-        print(f'{poster["title"]} collection not found in any library.')
+        return False  # Not found, but don't print anything
 
 
-def set_posters(url, tv, movies):
+def get_plex_seasons(tv_libraries, show_title, show_year=None):
+    """
+    Get all season numbers that exist in Plex for a given show.
+
+    Args:
+        tv_libraries: List of Plex TV library sections
+        show_title: Title of the show
+        show_year: Optional year to help with matching
+
+    Returns:
+        Set of season numbers (integers) that exist in Plex
+    """
+    seasons = set()
+
+    for lib in tv_libraries:
+        try:
+            # Try to find the show
+            if show_year:
+                results = lib.search(title=show_title, year=show_year)
+            else:
+                results = lib.search(title=show_title)
+
+            # Get the first match
+            if results:
+                show = results[0]
+                # Get all season numbers (including Season 0 for Specials)
+                for season in show.seasons():
+                    seasons.add(season.seasonNumber)
+                break  # Found the show, no need to check other libraries
+        except:
+            continue
+
+    return seasons
+
+def set_posters(url, tv, movies, creator="Unknown"):
+    """
+    Scrape and upload posters with improved grouping logic.
+    Groups TV shows together and uploads all seasons systematically.
+    Applies main poster to seasons that don't have specific posters (optional).
+    """
+    # Start timing
+    start_time = time.time()
+
     movieposters, showposters, collectionposters = scrape(url)
 
+    # Load config to check fallback setting
+    try:
+        config = json.load(open("config.json"))
+        use_fallback = config.get("use_main_poster_for_missing_seasons", True)
+    except:
+        use_fallback = True  # Default to True if config can't be loaded
+
+    # Upload collections (silent, no grouping needed)
     for poster in collectionposters:
-        upload_collection_poster(poster, movies)
-        
+        success = upload_collection_poster(poster, movies, creator=creator)
+        if success is False:  # Only track if not found (not if cached with None)
+            # Check if this collection actually exists in Plex (to filter out collections user doesn't have)
+            if find_collection(movies, poster):
+                # Collection exists in Plex but poster wasn't uploaded (true miss)
+                missing_items['collections_no_match'].append(poster['title'])
+
+    # Upload movies (silent, no grouping needed)
     for poster in movieposters:
-        upload_movie_poster(poster, movies)
-    
-    for poster in showposters:
-        upload_tv_poster(poster, tv)
+        success = upload_movie_poster(poster, movies, creator=creator)
+        if success is False:  # Only track if not found (not if cached with None)
+            # Check if this movie actually exists in Plex (to filter out movies user doesn't have)
+            if find_in_library(movies, poster):
+                # Movie exists in Plex but poster wasn't uploaded (true miss)
+                missing_items['movies_no_match'].append(poster['title'])
+
+    # Group TV shows by title for systematic processing
+    grouped_shows = group_posters_by_show(showposters)
+
+    # Process each show with all its seasons together
+    for show_title, show_data in sorted(grouped_shows.items()):
+        # Try to upload the main cover first
+        uploaded_any = False
+        main_poster = show_data['cover']
+
+        if main_poster:
+            success = upload_tv_poster(main_poster, tv, creator=creator)
+            if success is not False:  # Count both True (uploaded) and None (cached) as uploaded
+                uploaded_any = True
+
+        # Then upload all seasons in order
+        uploaded_seasons = set()
+        for season_num in sorted(show_data['seasons'].keys()):
+            season_poster = show_data['seasons'][season_num]
+            success = upload_tv_poster(season_poster, tv, creator=creator)
+            if success is not False:  # Count both True (uploaded) and None (cached) as uploaded
+                uploaded_any = True
+                uploaded_seasons.add(season_num)
+
+        # Track if show had NO matches at all
+        if not uploaded_any:
+            # Check if this show actually exists in Plex (to filter out shows user doesn't have)
+            test_poster = {'title': show_title, 'year': main_poster.get('year') if main_poster else None}
+            if find_in_library(tv, test_poster):
+                # Show exists in Plex but no posters were uploaded (true miss)
+                missing_items['shows_no_match'].append(show_title)
+            continue  # Skip fallback logic for shows not in library
+
+        # SMART FALLBACK: Apply main poster to missing seasons
+        if use_fallback and main_poster and uploaded_any:
+            # Get what seasons exist in Plex for this show
+            show_year = main_poster.get('year')
+            plex_seasons = get_plex_seasons(tv, show_title, show_year)
+
+            # Find seasons that exist in Plex but weren't in the poster set
+            missing_seasons = plex_seasons - uploaded_seasons
+
+            if missing_seasons:
+                # Track shows with missing seasons (before applying fallback)
+                missing_items['shows_partial_match'][show_title] = sorted(missing_seasons)
+
+                for season_num in sorted(missing_seasons):
+                    # Create a fallback poster using the main poster's URL
+                    fallback_poster = {
+                        'title': show_title,
+                        'season': season_num,
+                        'episode': None,
+                        'year': show_year,
+                        'url': main_poster['url'],
+                        'source': main_poster['source'],
+                        'set_id': main_poster.get('set_id')  # Preserve set_id
+                    }
+
+                    success = upload_tv_poster(fallback_poster, tv, creator=creator, silent=False)
+                    if success:
+                        print(f"  ↳ [Fallback] Season {season_num} → using main poster")
+
+    # Print duration at the end
+    total_duration = format_elapsed_time(time.time() - start_time)
+    print(f"\n⏱️  Completed in {total_duration}")
 
 def scrape_posterdb_set_link(soup):
     try:
@@ -325,9 +975,13 @@ def scrape_posterdb(soup):
     movieposters = []
     showposters = []
     collectionposters = []
-    
+
     # find the poster grid
     poster_div = soup.find('div', class_='row d-flex flex-wrap m-0 w-100 mx-n1 mt-n1')
+
+    # Handle empty pages or missing poster grid
+    if poster_div is None:
+        return movieposters, showposters, collectionposters
 
     # find all poster divs
     posters = poster_div.find_all('div', class_='col-6 col-lg-2 p-1')
@@ -343,6 +997,17 @@ def scrape_posterdb(soup):
         # get metadata
         title_p = poster.find('p', class_='p-0 mb-1 text-break').string
 
+        # Extract set ID from the set link (for handling multiple sets per show)
+        set_id = None
+        try:
+            set_link = poster.find('a', attrs={'title': 'Posters in Set'})
+            if set_link and 'href' in set_link.attrs:
+                # Extract set ID from URL like '/set/368794'
+                set_url = set_link['href']
+                set_id = set_url.split('/set/')[-1].split('?')[0] if '/set/' in set_url else None
+        except:
+            pass  # If we can't extract set ID, continue without it
+
         if media_type == "Show":
             title = title_p.split(" (")[0]
             try:
@@ -356,6 +1021,8 @@ def scrape_posterdb(soup):
                     season = 0
                 elif "Season" in split_season:
                     season = int(split_season.split(" ")[1])
+                else:
+                    season = "Cover"
             else:
                 season = "Cover"
             
@@ -366,6 +1033,7 @@ def scrape_posterdb(soup):
             showposter["episode"] = None
             showposter["year"] = year
             showposter["source"] = "posterdb"
+            showposter["set_id"] = set_id  # Add set ID for multi-set handling
             showposters.append(showposter)
 
         elif media_type == "Movie":
@@ -375,19 +1043,21 @@ def scrape_posterdb(soup):
             else:
                 title = title_split[0]
             year = title_split[-1].split(")")[0]
-                
+
             movieposter = {}
             movieposter["title"] = title
             movieposter["url"] = poster_url
             movieposter["year"] = int(year)
             movieposter["source"] = "posterdb"
+            movieposter["set_id"] = set_id  # Add set ID for multi-set handling
             movieposters.append(movieposter)
-        
+
         elif media_type == "Collection":
             collectionposter = {}
             collectionposter["title"] = title_p
             collectionposter["url"] = poster_url
             collectionposter["source"] = "posterdb"
+            collectionposter["set_id"] = set_id  # Add set ID for multi-set handling
             collectionposters.append(collectionposter)
     
     return movieposters, showposters, collectionposters
@@ -489,8 +1159,7 @@ def scrape_mediux(soup):
 
             if check_mediux_filter(mediux_filters=mediux_filters, filter=file_type):
                 showposters.append(showposter)
-            else:
-                print(f"{show_name} - skipping. '{file_type}' is not in 'mediux_filters'")
+            # else: silently skip items not matching mediux_filters
         
         elif media_type == "Movie":
             if "Collection" in title:
@@ -538,22 +1207,211 @@ def scrape(url):
 
 
 def scrape_entire_user(url):
-    '''Scrape all pages of a user's uploads.'''
-    soup = cook_soup(url) 
-    pages = scrape_posterd_user_info(soup)
-    
-    if not pages:
-        print(f"Could not determine the number of pages for {url}")
-        return
+    '''Scrape all pages of a user's uploads with progress indicator.'''
+    global processed_items
+
+    # Start timing
+    start_time = time.time()
+
+    # Clear missing items tracking for this creator
+    clear_missing_items_tracking()
+
+    # Extract username from URL
+    creator = extract_username_from_url(url)
 
     if "?" in url:
         cleaned_url = url.split("?")[0]
         url = cleaned_url
-    
-    for page in range(pages):
-        print(f"Scraping page {page + 1}.")
-        page_url = f"{url}?section=uploads&page={page + 1}"
-        set_posters(page_url, tv, movies)
+
+    # Check for incomplete scan and offer to resume
+    scanning_state = load_scanning_state()
+    resume = False
+    start_page = 0
+    all_movieposters = []
+    all_showposters = []
+    all_collectionposters = []
+
+    if scanning_state and scanning_state.get('url') == url:
+        print(f"\n🔄 Found incomplete scan for {creator}")
+        print(f"   Last scanned: page {scanning_state['current_page']}/{scanning_state['total_pages']}")
+        print(f"   Collected: {len(scanning_state['collected_shows'])} show posters, {len(scanning_state['collected_movies'])} movies, {len(scanning_state['collected_collections'])} collections")
+        response = input("   Resume from where it left off? [Y/n]: ").strip().lower()
+
+        if response != 'n':
+            resume = True
+            start_page = scanning_state['current_page']
+            all_movieposters = scanning_state['collected_movies']
+            all_showposters = scanning_state['collected_shows']
+            all_collectionposters = scanning_state['collected_collections']
+            print(f"   ✓ Resuming from page {start_page + 1}\n")
+        else:
+            print(f"   Starting fresh scan...\n")
+
+    if not resume:
+        print(f"\n{'='*60}")
+        print(f"Processing creator: {creator}")
+        print(f"{'='*60}\n")
+
+    # Track items before processing this creator
+    start_tv_count = len(processed_items['tv_shows'])
+    start_movie_count = len(processed_items['movies'])
+    start_collection_count = len(processed_items['collections'])
+
+    # Get total pages (only if not resuming)
+    if not resume:
+        soup = cook_soup(url)
+        pages = scrape_posterd_user_info(soup)
+    else:
+        pages = scanning_state['total_pages']
+
+    if not pages:
+        print(f"Could not determine the number of pages for {url}")
+        return
+
+    # Collect ALL posters from ALL pages first (for proper grouping)
+    for page in range(start_page, pages):
+        elapsed = format_elapsed_time(time.time() - start_time)
+        spinner = Spinner(f"Scanning page {page + 1}/{pages} for {creator} [{elapsed}]")
+        spinner.start()
+
+        try:
+            page_url = f"{url}?section=uploads&page={page + 1}"
+            movieposters, showposters, collectionposters = scrape(page_url)
+            all_movieposters.extend(movieposters)
+            all_showposters.extend(showposters)
+            all_collectionposters.extend(collectionposters)
+        finally:
+            spinner.stop()
+
+        # Save scanning progress every 10 pages for crash recovery
+        if (page + 1) % 10 == 0:
+            scanning_state_data = {
+                'creator': creator,
+                'url': url,
+                'current_page': page + 1,
+                'total_pages': pages,
+                'collected_movies': all_movieposters,
+                'collected_shows': all_showposters,
+                'collected_collections': all_collectionposters
+            }
+            save_cache(scanning_state=scanning_state_data)
+
+    # Now process all collected posters with proper grouping
+    elapsed = format_elapsed_time(time.time() - start_time)
+    print(f"\n📦 Processing {len(all_movieposters)} movies, {len(all_showposters)} show posters, {len(all_collectionposters)} collections... [{elapsed}]")
+
+    # Upload collections (silent, no grouping needed)
+    for poster in all_collectionposters:
+        success = upload_collection_poster(poster, movies, creator=creator)
+        if success is False:  # Only track if not found (not if cached with None)
+            # Check if this collection actually exists in Plex (to filter out collections user doesn't have)
+            if find_collection(movies, poster):
+                # Collection exists in Plex but poster wasn't uploaded (true miss)
+                missing_items['collections_no_match'].append(poster['title'])
+
+    # Upload movies (silent, no grouping needed)
+    for poster in all_movieposters:
+        success = upload_movie_poster(poster, movies, creator=creator)
+        if success is False:  # Only track if not found (not if cached with None)
+            # Check if this movie actually exists in Plex (to filter out movies user doesn't have)
+            if find_in_library(movies, poster):
+                # Movie exists in Plex but poster wasn't uploaded (true miss)
+                missing_items['movies_no_match'].append(poster['title'])
+
+    # Group TV shows by title for systematic processing (across ALL pages)
+    grouped_shows = group_posters_by_show(all_showposters)
+
+    # Load config to check fallback setting
+    try:
+        config = json.load(open("config.json"))
+        use_fallback = config.get("use_main_poster_for_missing_seasons", True)
+    except:
+        use_fallback = True  # Default to True if config can't be loaded
+
+    # Process each show with all its seasons together
+    for show_title, show_data in sorted(grouped_shows.items()):
+        # Try to upload the main cover first
+        uploaded_any = False
+        main_poster = show_data['cover']
+
+        if main_poster:
+            success = upload_tv_poster(main_poster, tv, creator=creator)
+            if success is not False:  # Count both True (uploaded) and None (cached) as uploaded
+                uploaded_any = True
+
+        # Then upload all seasons in order
+        uploaded_seasons = set()
+        for season_num in sorted(show_data['seasons'].keys()):
+            season_poster = show_data['seasons'][season_num]
+            success = upload_tv_poster(season_poster, tv, creator=creator)
+            if success is not False:  # Count both True (uploaded) and None (cached) as uploaded
+                uploaded_any = True
+                uploaded_seasons.add(season_num)
+
+        # Track if show had NO matches at all
+        if not uploaded_any:
+            # Check if this show actually exists in Plex (to filter out shows user doesn't have)
+            test_poster = {'title': show_title, 'year': main_poster.get('year') if main_poster else None}
+            if find_in_library(tv, test_poster):
+                # Show exists in Plex but no posters were uploaded (true miss)
+                missing_items['shows_no_match'].append(show_title)
+            continue  # Skip fallback logic for shows not in library
+
+        # SMART FALLBACK: Apply main poster to missing seasons
+        if use_fallback and main_poster and uploaded_any:
+            # Get what seasons exist in Plex for this show
+            show_year = main_poster.get('year')
+            plex_seasons = get_plex_seasons(tv, show_title, show_year)
+
+            # Find seasons that exist in Plex but weren't in the poster set
+            missing_seasons = plex_seasons - uploaded_seasons
+
+            if missing_seasons:
+                # Track shows with missing seasons (before applying fallback)
+                missing_items['shows_partial_match'][show_title] = sorted(missing_seasons)
+
+                for season_num in sorted(missing_seasons):
+                    # Create a fallback poster using the main poster's URL
+                    fallback_poster = {
+                        'title': show_title,
+                        'season': season_num,
+                        'episode': None,
+                        'year': show_year,
+                        'url': main_poster['url'],
+                        'source': main_poster['source'],
+                        'set_id': main_poster.get('set_id')  # Preserve set_id
+                    }
+
+                    success = upload_tv_poster(fallback_poster, tv, creator=creator, silent=False)
+                    if success:
+                        print(f"  ↳ [Fallback] Season {season_num} → using main poster")
+
+    # Calculate items uploaded by this creator
+    new_tv_count = len(processed_items['tv_shows']) - start_tv_count
+    new_movie_count = len(processed_items['movies']) - start_movie_count
+    new_collection_count = len(processed_items['collections']) - start_collection_count
+
+    # Save cache after completing this creator (crash recovery)
+    save_cache()
+
+    # Clear scanning state after successful completion
+    clear_scanning_state()
+
+    # Calculate total duration
+    total_duration = format_elapsed_time(time.time() - start_time)
+
+    # Print summary
+    print(f"\n{'='*60}")
+    print(f"✓ Completed processing {creator}")
+    print(f"  TV show posters uploaded: {new_tv_count}")
+    print(f"  Movie posters uploaded: {new_movie_count}")
+    print(f"  Collection posters uploaded: {new_collection_count}")
+    print(f"  💾 Progress saved to cache")
+    print(f"  ⏱️  Total duration: {total_duration}")
+    print(f"{'='*60}\n")
+
+    # Print missing items summary
+    print_missing_items_summary()
 
 
 def is_not_comment(url):
@@ -633,8 +1491,7 @@ def resource_path(relative_path):
 
 def get_full_path(relative_path):
     '''Helper function to get the absolute path based on the script's location.'''
-    print("relative_path", relative_path)
-    script_dir = os.path.dirname(os.path.abspath(__file__)) 
+    script_dir = os.path.dirname(os.path.abspath(__file__))
     return os.path.join(script_dir, relative_path)
 
 def update_status(message, color="white"):
@@ -693,7 +1550,8 @@ def load_config(config_path="config.json"):
         "bulk_txt": "bulk_import.txt",
         "tv_library": ["TV Shows", "Anime"],
         "movie_library": ["Movies"],
-        "mediux_filters": ["title_card", "background", "season_cover", "show_cover"]
+        "mediux_filters": ["title_card", "background", "season_cover", "show_cover"],
+        "use_main_poster_for_missing_seasons": True
     }
 
     # Create the config.json file if it doesn't exist
@@ -1307,9 +2165,27 @@ def check_libraries(tv, movies):
 
 # * Main Initialization ---
 if __name__ == "__main__":
-    config = load_config() 
+    config = load_config()
     bulk_txt = config.get("bulk_txt", "bulk_import.txt")
-    
+
+    # Check for --clear-cache flag
+    if '--clear-cache' in sys.argv:
+        print("\n🗑️  Clearing poster cache...")
+        clear_cache()
+        # Remove the flag so it doesn't interfere with other processing
+        sys.argv.remove('--clear-cache')
+        print()
+
+    # Load cache for crash recovery and duplicate prevention
+    # (Skip loading if GUI mode, as GUI operations don't use the cache)
+    if len(sys.argv) > 1 and sys.argv[1].lower() != 'gui':
+        load_cache()
+        print()
+    elif len(sys.argv) == 1 and interactive_cli:
+        # Load for interactive CLI mode too
+        load_cache()
+        print()
+
     # Check for CLI arguments regardless of interactive_cli flag
     if len(sys.argv) > 1:
         command = sys.argv[1].lower()

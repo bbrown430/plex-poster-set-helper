@@ -1,4 +1,5 @@
 config.json
+.poster_cache.json
 __pycache__
 tempCodeRunnerFile.py
 build/
