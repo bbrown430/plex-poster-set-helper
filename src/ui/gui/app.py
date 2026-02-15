@@ -405,16 +405,32 @@ class PlexPosterGUI:
         # Reinitialize Plex service with new credentials
         self.plex_service = PlexService(self.config)
         tv_libs, movie_libs = self.plex_service.setup(gui_mode=True)
-        
+
         # Reinitialize upload service with updated Plex service
         if self.plex_service:
             self.upload_service = PosterUploadService(self.plex_service)
-        
+
         # Reinitialize scraper factory with updated config
         self.scraper_factory = ScraperFactory(config=self.config)
-        
-        self._update_status("Configuration saved successfully!", color="#E5A00D")
-        
+
+        # Show context-aware status message based on Plex setup results
+        if not self.config.base_url or not self.config.token:
+            self._update_status("Config saved. No Plex URL/token configured.", color="orange")
+        elif self.plex_service.errors:
+            self._update_status(self.plex_service.errors[0], color="red")
+        elif self.plex_service.warnings:
+            self._update_status(f"Config saved. {self.plex_service.warnings[0]}", color="orange")
+        else:
+            tv_count = len(self.plex_service.tv_libraries)
+            movie_count = len(self.plex_service.movie_libraries)
+            parts = []
+            if tv_count:
+                parts.append(f"{tv_count} TV")
+            if movie_count:
+                parts.append(f"{movie_count} Movie")
+            lib_summary = ", ".join(parts) + " " + ("libraries" if tv_count + movie_count != 1 else "library") if parts else "no libraries"
+            self._update_status(f"Config saved. Connected — {lib_summary} loaded", color="#4CAF50")
+
         # Refresh the Reset Posters tab if Plex setup was successful
         if tv_libs or movie_libs:
             self.app.after(100, lambda: self.label_handler.refresh_labeled_items())
@@ -559,6 +575,63 @@ class PlexPosterGUI:
         
         self.app.after(0, update)
     
+    def _start_plex_oauth(self):
+        """Start the Plex OAuth sign-in flow."""
+        from plexapi.myplex import MyPlexPinLogin
+
+        self._update_oauth_status("Opening Plex sign-in page...", color="#E5A00D")
+        try:
+            pin_login = MyPlexPinLogin(oauth=True)
+            oauth_url = pin_login.oauthUrl()
+            webbrowser.open(oauth_url)
+            self._update_oauth_status("Waiting for sign-in...", color="#E5A00D")
+            threading.Thread(target=self._poll_plex_oauth, args=(pin_login,), daemon=True).start()
+        except Exception as e:
+            self._update_oauth_status(f"OAuth error: {e}", color="red")
+
+    def _poll_plex_oauth(self, pin_login):
+        """Poll for Plex OAuth completion in a background thread."""
+        import time
+        for _ in range(150):  # 5 minute timeout
+            time.sleep(2)
+            if pin_login.checkLogin():
+                token = pin_login.token
+                if token:
+                    try:
+                        from plexapi.myplex import MyPlexAccount
+                        account = MyPlexAccount(token=token)
+                        resources = [r for r in account.resources() if 'server' in r.provides]
+                        base_url = ""
+                        if resources:
+                            server = resources[0]
+                            try:
+                                plex_server = server.connect()
+                                base_url = plex_server._baseurl
+                            except Exception:
+                                if server.connections:
+                                    base_url = server.connections[0].uri
+                        self.app.after(0, lambda bu=base_url, t=token, u=account.username: self._finish_plex_oauth(bu, t, u))
+                    except Exception as e:
+                        self.app.after(0, lambda err=e: self._update_oauth_status(f"OAuth error: {err}", color="red"))
+                    return
+        self.app.after(0, lambda: self._update_oauth_status("Sign-in timed out", color="red"))
+
+    def _finish_plex_oauth(self, base_url, token, username):
+        """Complete the OAuth flow by populating UI fields and saving config."""
+        self.base_url_entry.delete(0, ctk.END)
+        self.base_url_entry.insert(0, base_url)
+        self.token_entry.delete(0, ctk.END)
+        self.token_entry.insert(0, token)
+        self._update_oauth_status(f"Signed in as {username}!", color="#4CAF50")
+        self._save_config()
+
+    def _update_oauth_status(self, message, color="#696969"):
+        """Update the OAuth status label on the settings tab."""
+        def update():
+            if self.settings_tab and hasattr(self.settings_tab, 'oauth_status_label'):
+                self.settings_tab.oauth_status_label.configure(text=message, text_color=color)
+        self.app.after(0, update)
+
     @property
     def poster_scrape_rows(self):
         """Get current poster scrape rows dynamically."""

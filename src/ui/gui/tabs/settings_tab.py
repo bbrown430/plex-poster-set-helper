@@ -92,7 +92,41 @@ class SettingsTab:
         self.token_entry.grid(row=row, column=0, pady=(0, 10), padx=10, sticky="ew")
         self.app.ui_helpers.bind_context_menu(self.token_entry)
         row += 1
-        
+
+        # Sign in with Plex OAuth
+        oauth_frame = ctk.CTkFrame(main_scroll, fg_color="transparent")
+        oauth_frame.grid(row=row, column=0, pady=(0, 10), padx=10, sticky="ew")
+        oauth_frame.grid_columnconfigure(0, weight=1)
+
+        divider_label = ctk.CTkLabel(
+            oauth_frame,
+            text="-- or sign in with Plex --",
+            text_color="#696969",
+            font=("Roboto", 12)
+        )
+        divider_label.grid(row=0, column=0, pady=(0, 5), sticky="ew")
+
+        self.oauth_button = ctk.CTkButton(
+            oauth_frame,
+            text="Sign in with Plex",
+            command=self.app._start_plex_oauth,
+            fg_color="#E5A00D",
+            hover_color="#FFA500",
+            text_color="#000000",
+            font=("Roboto", 14, "bold"),
+            height=40
+        )
+        self.oauth_button.grid(row=1, column=0, pady=(0, 5), sticky="ew")
+
+        self.oauth_status_label = ctk.CTkLabel(
+            oauth_frame,
+            text="",
+            text_color="#696969",
+            font=("Roboto", 12)
+        )
+        self.oauth_status_label.grid(row=2, column=0, pady=0, sticky="ew")
+        row += 1
+
         # TV Library Names
         tv_header_frame = ctk.CTkFrame(main_scroll, fg_color="transparent")
         tv_header_frame.grid(row=row, column=0, pady=(5, 5), padx=10, sticky="ew")
