@@ -405,16 +405,32 @@ class PlexPosterGUI:
         # Reinitialize Plex service with new credentials
         self.plex_service = PlexService(self.config)
         tv_libs, movie_libs = self.plex_service.setup(gui_mode=True)
-        
+
         # Reinitialize upload service with updated Plex service
         if self.plex_service:
             self.upload_service = PosterUploadService(self.plex_service)
-        
+
         # Reinitialize scraper factory with updated config
         self.scraper_factory = ScraperFactory(config=self.config)
-        
-        self._update_status("Configuration saved successfully!", color="#E5A00D")
-        
+
+        # Show context-aware status message based on Plex setup results
+        if not self.config.base_url or not self.config.token:
+            self._update_status("Config saved. No Plex URL/token configured.", color="orange")
+        elif self.plex_service.errors:
+            self._update_status(self.plex_service.errors[0], color="red")
+        elif self.plex_service.warnings:
+            self._update_status(f"Config saved. {self.plex_service.warnings[0]}", color="orange")
+        else:
+            tv_count = len(self.plex_service.tv_libraries)
+            movie_count = len(self.plex_service.movie_libraries)
+            parts = []
+            if tv_count:
+                parts.append(f"{tv_count} TV")
+            if movie_count:
+                parts.append(f"{movie_count} Movie")
+            lib_summary = ", ".join(parts) + " " + ("libraries" if tv_count + movie_count != 1 else "library") if parts else "no libraries"
+            self._update_status(f"Config saved. Connected — {lib_summary} loaded", color="#4CAF50")
+
         # Refresh the Reset Posters tab if Plex setup was successful
         if tv_libs or movie_libs:
             self.app.after(100, lambda: self.label_handler.refresh_labeled_items())

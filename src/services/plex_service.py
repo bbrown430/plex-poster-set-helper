@@ -23,6 +23,8 @@ class PlexService:
         self.plex: Optional[PlexServer] = None
         self.tv_libraries: List = []
         self.movie_libraries: List = []
+        self.errors: List[str] = []
+        self.warnings: List[str] = []
     
     def setup(self, gui_mode: bool = False) -> Tuple[List, List]:
         """Setup Plex server connection and libraries.
@@ -33,6 +35,9 @@ class PlexService:
         Returns:
             Tuple of (tv_libraries, movie_libraries).
         """
+        self.errors = []
+        self.warnings = []
+
         if not self.config or not self.config.base_url or not self.config.token:
             error_msg = "Invalid Plex token or base URL. Please provide valid values in config.json or via the GUI."
             self._handle_error(error_msg, gui_mode)
@@ -93,8 +98,9 @@ class PlexService:
                 plex_lib = self.plex.library.section(lib_name)
                 libraries.append(plex_lib)
             except plexapi.exceptions.NotFound as e:
-                error_msg = f'{library_type} named "{lib_name}" not found: {str(e)}'
-                self._handle_error(error_msg, gui_mode)
+                warning_msg = f'{library_type} named "{lib_name}" not found: {str(e)}'
+                self.warnings.append(warning_msg)
+                print(warning_msg)
         
         return libraries
     
@@ -216,14 +222,13 @@ class PlexService:
     
     def _handle_error(self, message: str, gui_mode: bool):
         """Handle errors consistently.
-        
+
         Args:
             message: Error message.
             gui_mode: Whether in GUI mode.
         """
+        self.errors.append(message)
         if gui_mode:
-            # In GUI mode, we'll need to handle this with a callback
-            # For now, just print
             print(message)
         else:
             print(message)
