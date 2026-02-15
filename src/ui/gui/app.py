@@ -559,6 +559,63 @@ class PlexPosterGUI:
         
         self.app.after(0, update)
     
+    def _start_plex_oauth(self):
+        """Start the Plex OAuth sign-in flow."""
+        from plexapi.myplex import MyPlexPinLogin
+
+        self._update_oauth_status("Opening Plex sign-in page...", color="#E5A00D")
+        try:
+            pin_login = MyPlexPinLogin(oauth=True)
+            oauth_url = pin_login.oauthUrl()
+            webbrowser.open(oauth_url)
+            self._update_oauth_status("Waiting for sign-in...", color="#E5A00D")
+            threading.Thread(target=self._poll_plex_oauth, args=(pin_login,), daemon=True).start()
+        except Exception as e:
+            self._update_oauth_status(f"OAuth error: {e}", color="red")
+
+    def _poll_plex_oauth(self, pin_login):
+        """Poll for Plex OAuth completion in a background thread."""
+        import time
+        for _ in range(150):  # 5 minute timeout
+            time.sleep(2)
+            if pin_login.checkLogin():
+                token = pin_login.token
+                if token:
+                    try:
+                        from plexapi.myplex import MyPlexAccount
+                        account = MyPlexAccount(token=token)
+                        resources = [r for r in account.resources() if 'server' in r.provides]
+                        base_url = ""
+                        if resources:
+                            server = resources[0]
+                            try:
+                                plex_server = server.connect()
+                                base_url = plex_server._baseurl
+                            except Exception:
+                                if server.connections:
+                                    base_url = server.connections[0].uri
+                        self.app.after(0, lambda bu=base_url, t=token, u=account.username: self._finish_plex_oauth(bu, t, u))
+                    except Exception as e:
+                        self.app.after(0, lambda err=e: self._update_oauth_status(f"OAuth error: {err}", color="red"))
+                    return
+        self.app.after(0, lambda: self._update_oauth_status("Sign-in timed out", color="red"))
+
+    def _finish_plex_oauth(self, base_url, token, username):
+        """Complete the OAuth flow by populating UI fields and saving config."""
+        self.base_url_entry.delete(0, ctk.END)
+        self.base_url_entry.insert(0, base_url)
+        self.token_entry.delete(0, ctk.END)
+        self.token_entry.insert(0, token)
+        self._update_oauth_status(f"Signed in as {username}!", color="#4CAF50")
+        self._save_config()
+
+    def _update_oauth_status(self, message, color="#696969"):
+        """Update the OAuth status label on the settings tab."""
+        def update():
+            if self.settings_tab and hasattr(self.settings_tab, 'oauth_status_label'):
+                self.settings_tab.oauth_status_label.configure(text=message, text_color=color)
+        self.app.after(0, update)
+
     @property
     def poster_scrape_rows(self):
         """Get current poster scrape rows dynamically."""
