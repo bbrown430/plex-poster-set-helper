@@ -5,23 +5,6 @@ import sys
 import re
 
 
-def title_cleaner(title: str) -> str:
-    """Clean title by removing year and extra information.
-    
-    Args:
-        title: Title string to clean.
-        
-    Returns:
-        Cleaned title string.
-    """
-    if " (" in title:
-        title = title.split(" (")[0]
-    elif " -" in title:
-        title = title.split(" -")[0]
-    
-    return title.strip()
-
-
 def parse_string_to_dict(input_string: str) -> dict:
     """Parse JSON string from HTML content.
     

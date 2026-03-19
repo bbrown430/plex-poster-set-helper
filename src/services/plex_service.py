@@ -118,11 +118,27 @@ class PlexService:
         
         items = []
         
+        # Try exact year, then previous year, then next year
+        # Help reduce mismatches due to release date differences that were resulting in unnecessary fuzzy matches
+        def fetch_with_year_window(library, target_title, target_year):
+            years_to_try = [target_year, target_year - 1, target_year + 1]
+            
+            for y in years_to_try:
+                try:
+                    found = library.get(target_title, year=y)
+                    if found:
+                        if y != target_year:
+                            print(f"ℹ Found '{target_title}' with year {y} (requested {target_year})")
+                        return found
+                except:
+                    continue
+            return None
+        
         # Try exact match first with mapped title
         for lib in libraries:
             try:
                 if year is not None:
-                    library_item = lib.get(mapped_title, year=year)
+                    library_item = fetch_with_year_window(lib, mapped_title, year)
                 else:
                     library_item = lib.get(mapped_title)
                 
@@ -141,19 +157,23 @@ class PlexService:
                 matches = get_close_matches(mapped_title, all_titles, n=1, cutoff=0.8)
                 
                 if matches:
-                    print(f"ℹ Fuzzy matched '{mapped_title}' to '{matches[0]}'")
+                    fuzzy_title = matches[0]
+                    print(f"ℹ Fuzzy matched '{mapped_title}' to '{fuzzy_title}'")
                     library_item = None
                     
                     # Try with year first if provided
                     if year is not None:
-                        try:
-                            library_item = lib.get(matches[0], year=year)
-                        except:
-                            # Year mismatch, try without year
-                            print(f"ℹ Year mismatch for '{matches[0]}', trying without year filter")
-                            library_item = lib.get(matches[0])
+                        library_item = fetch_with_year_window(lib, fuzzy_title, year)
+                    
+                        # If strictly failed year window, fallback to ANY year
+                        if not library_item:
+                            print(f"ℹ Year mismatch for '{fuzzy_title}', trying without year filter")
+                            try:
+                                library_item = lib.get(fuzzy_title)
+                            except:
+                                pass
                     else:
-                        library_item = lib.get(matches[0])
+                        library_item = lib.get(fuzzy_title)
                     
                     if library_item:
                         items.append(library_item)
