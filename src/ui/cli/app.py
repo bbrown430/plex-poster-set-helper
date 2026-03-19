@@ -63,6 +63,14 @@ class PlexPosterCLI:
                 break
             else:
                 print("Invalid choice. Please select an option between 1 and 7.")
+                
+    def process_bulk_file(self, file_path: str):
+        """Process a bulk file."""
+        self.url_handler.process_bulk_file(file_path)
+
+    def process_url(self, url: str):
+        """Process a single URL."""
+        self.url_handler.process_url(url)
     
     def _display_main_menu(self):
         """Display the main menu with stats."""

@@ -441,7 +441,12 @@ class BaseScraper(ABC):
                 wait_strategies = ["domcontentloaded", "networkidle"]
                 wait_until = random.choice(wait_strategies)
                 
-                self._page.goto(url, wait_until=wait_until, timeout=60000)
+                try:
+                    self._page.goto(url, wait_until=wait_until, timeout=120000)
+                except Exception as e:
+                    print(f"Retrying with alternate wait strategy due to error: {str(e)}")
+                    wait_until = wait_strategies[0] if wait_until == wait_strategies[1] else wait_strategies[1]
+                    self._page.goto(url, wait_until=wait_until, timeout=120000)
                 
                 # Site-specific handling with configurable delays
                 if "mediux.pro" in url:
