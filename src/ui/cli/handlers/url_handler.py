@@ -127,6 +127,20 @@ class URLHandler(BaseHandler):
         except Exception as e:
             print(f"Error reading file: {str(e)}")
             
+    def should_process_item(self, title, year=None):
+        """Callback function to check if a title is in the library.
+        If the title is not found, we can skip the entire MediUX set to save time.
+        
+        Args:
+            title: Title to check.
+            year: Optional year to check.
+        """
+        plex_service = self.app.plex_service
+        all_libraries = plex_service.movie_libraries + plex_service.tv_libraries
+        
+        results = plex_service.find_in_library(all_libraries, title, year)
+        return results is not None
+            
     def _process_urls_sequential(self, urls: List[str]):
         """Process URLs sequentially.
         
@@ -137,7 +151,7 @@ class URLHandler(BaseHandler):
             print(f"[{i}/{len(urls)}] Processing: {url}")
             
             try:
-                movie_posters, show_posters, collection_posters = self.scraper_factory.scrape_url(url)
+                movie_posters, show_posters, collection_posters = self.scraper_factory.scrape_url(url, should_process_item=self.should_process_item)
                 
                 # Process all posters
                 all_posters = collection_posters + movie_posters + show_posters
@@ -162,7 +176,7 @@ class URLHandler(BaseHandler):
         
         with ThreadPoolExecutor(max_workers=max_workers) as executor:
             future_to_url = {
-                executor.submit(self._scrape_and_upload_url, url): url 
+                executor.submit(self._scrape_and_upload_url, url, should_process_item=self.should_process_item): url 
                 for url in urls
             }
             
@@ -184,7 +198,7 @@ class URLHandler(BaseHandler):
         
         print(f"\n📊 Total: {total_posters} posters uploaded from {total_urls} URLs")
         
-    def _scrape_and_upload_url(self, url: str):
+    def _scrape_and_upload_url(self, url: str, should_process_item=None):
         """Scrape and upload posters from a single URL (thread-safe).
         
         Args:
@@ -194,7 +208,7 @@ class URLHandler(BaseHandler):
             Tuple of (poster_count, error_message or None)
         """
         try:
-            movie_posters, show_posters, collection_posters = self.scraper_factory.scrape_url(url)
+            movie_posters, show_posters, collection_posters = self.scraper_factory.scrape_url(url, should_process_item=should_process_item)
             
             # Process all posters
             all_posters = collection_posters + movie_posters + show_posters

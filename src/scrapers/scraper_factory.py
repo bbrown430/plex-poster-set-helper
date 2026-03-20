@@ -26,11 +26,12 @@ class ScraperFactory:
         self._posterdb_scraper = None
         self._mediux_scraper = None
     
-    def scrape_url(self, url: str) -> Tuple[List[PosterInfo], List[PosterInfo], List[PosterInfo]]:
+    def scrape_url(self, url: str, should_process_item=None) -> Tuple[List[PosterInfo], List[PosterInfo], List[PosterInfo]]:
         """Scrape URL using appropriate scraper.
         
         Args:
             url: URL to scrape.
+            should_process_item: Optional callback to check content before scraping (used for MediUX).
             
         Returns:
             Tuple of (movie_posters, show_posters, collection_posters).
@@ -39,8 +40,8 @@ class ScraperFactory:
         # Each thread will use requests-based scraping instead
         if "theposterdb.com" in url:
             return self._scrape_posterdb(url)
-        elif "mediux.pro" in url and "sets" in url:
-            return self._scrape_mediux(url)
+        elif "mediux.pro" in url and ("sets" in url or "user" in url):
+            return self._scrape_mediux(url, should_process_item=should_process_item)
         elif ".html" in url:
             return self._scrape_local_html(url)
         else:
@@ -68,17 +69,26 @@ class ScraperFactory:
             else:
                 raise ValueError("Unsupported PosterDB URL format.")
     
-    def _scrape_mediux(self, url: str) -> Tuple[List[PosterInfo], List[PosterInfo], List[PosterInfo]]:
+    def _scrape_mediux(self, url: str, should_process_item=None) -> Tuple[List[PosterInfo], List[PosterInfo], List[PosterInfo]]:
         """Scrape MediUX URL.
         
         Args:
             url: MediUX URL.
+            should_process_item: Optional callback to check content before scraping.
             
         Returns:
             Tuple of (movie_posters, show_posters, collection_posters).
         """
-        with MediuxScraper(config=self.config, use_playwright=self.use_playwright) as scraper:
-            return scraper.scrape(url)
+        with MediuxScraper(use_playwright=self.use_playwright, config=self.config) as scraper:
+            if "/user/" in url:
+                # User page - scrape all uploads
+                return scraper.scrape_user_uploads(url, should_process_item=should_process_item)
+            elif "/sets/" in url:
+                # Set URL - scrape the entire set
+                return scraper.scrape(url, should_process_item=should_process_item)
+            else:
+                raise ValueError("Unsupported MediUX URL format.")
+            
     
     def _scrape_local_html(self, file_path: str) -> Tuple[List[PosterInfo], List[PosterInfo], List[PosterInfo]]:
         """Scrape local HTML file.

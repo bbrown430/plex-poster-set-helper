@@ -325,7 +325,10 @@ class PosterDBScraper(BaseScraper):
         else:
             title = title_split[0]
         
-        year = int(title_split[-1].split(")")[0])
+        try:
+            year = int(title_split[-1].split(")")[0])
+        except:
+            year = None
         
         return PosterInfo(
             title=title,

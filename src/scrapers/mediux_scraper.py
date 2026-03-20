@@ -1,5 +1,7 @@
 """MediUX scraper implementation."""
 
+import math
+import re
 from typing import List, Tuple
 
 from ..core.models import PosterInfo
@@ -21,7 +23,7 @@ class MediuxScraper(BaseScraper):
         super().__init__(use_playwright, config)
         self.config = config
     
-    def scrape(self, url: str) -> Tuple[List[PosterInfo], List[PosterInfo], List[PosterInfo]]:
+    def scrape(self, url: str, should_process_item=None) -> Tuple[List[PosterInfo], List[PosterInfo], List[PosterInfo]]:
         """Scrape posters from MediUX.
         
         Args:
@@ -30,14 +32,104 @@ class MediuxScraper(BaseScraper):
         Returns:
             Tuple of (movie_posters, show_posters, collection_posters).
         """
+        
         soup = self.fetch_page(url)
-        return self._parse_mediux(soup)
+        return self._parse_mediux(soup, should_process_item=should_process_item)
     
-    def _parse_mediux(self, soup) -> Tuple[List[PosterInfo], List[PosterInfo], List[PosterInfo]]:
+    def scrape_user_uploads(self, url: str, should_process_item=None) -> Tuple[List[PosterInfo], List[PosterInfo], List[PosterInfo]]:
+        """Scrape all uploads from a user's page.
+        
+        Args:
+            url: User profile URL.
+            should_process_item: Optional callback to check content before scraping.
+            
+        Returns:
+            Tuple of (movie_posters, show_posters, collection_posters).
+        """
+        soup = self.fetch_page(url)
+        pages = self._get_user_page_count(soup)
+        
+        if not pages:
+            print(f"Could not determine the number of pages for {url}")
+            return [], [], []
+        
+        # Clean URL
+        if "?" in url:
+            url = url.split("?")[0]
+        
+        all_movie_posters = []
+        all_show_posters = []
+        all_collection_posters = []
+        
+        base_url = url.removesuffix('/sets')
+        
+        for page in range(pages):
+            print(f"Scraping page {page + 1} of {pages}.")
+            page_url = f"{base_url}/sets?page={page + 1}"
+            
+            grid_soup = self.fetch_page(page_url)
+            set_links = self.scrape_sets_from_page(grid_soup)
+            
+            for set_link in set_links:
+                movie_posters, show_posters, collection_posters = self.scrape(set_link, should_process_item=should_process_item)
+                all_movie_posters.extend(movie_posters)
+                all_show_posters.extend(show_posters)
+                all_collection_posters.extend(collection_posters)
+        
+        return all_movie_posters, all_show_posters, all_collection_posters
+    
+    def _get_user_page_count(self, soup) -> int:
+        """Get number of pages for user uploads.
+        
+        Args:
+            soup: BeautifulSoup object.
+            
+        Returns:
+            Number of pages or None.
+        """
+        try:
+            set_link = soup.find('a', href=lambda href: href and href.endswith('/sets'))
+            if set_link:
+                raw_text = set_link.get_text(strip=True)
+                number_str = re.sub(r'\D', '', raw_text)
+                upload_count = int(number_str)
+                pages = math.ceil(upload_count / 12)
+                
+                return pages
+        except:
+            return None
+        
+    def scrape_sets_from_page(self, soup) -> List[str]:
+        """Extract all set links from a user sets page.
+        
+        Args:
+            soup: BeautifulSoup object.
+            
+        Returns:
+            List of set URLs.
+        """
+        set_links = []
+        try:
+            headings = soup.select('h3 a')
+            
+            for link in headings:
+                href = link.get('href')
+                if href and '/sets/' in href:
+                    full_url = f"https://mediux.pro{href}" if href.startswith('/') else href
+                    set_links.append(full_url)
+            
+            return set_links
+            
+        except Exception as e:
+            print(f"Error scraping set links: {e}")
+            return []
+    
+    def _parse_mediux(self, soup, should_process_item=None) -> Tuple[List[PosterInfo], List[PosterInfo], List[PosterInfo]]:
         """Parse MediUX page for posters.
         
         Args:
             soup: BeautifulSoup object.
+            should_process_item: Optional callback to check content before scraping.
             
         Returns:
             Tuple of (movie_posters, show_posters, collection_posters).
@@ -82,6 +174,35 @@ class MediuxScraper(BaseScraper):
             print("  2. JavaScript didn't load properly")
             print("  3. Page requires authentication or has anti-scraping")
             return movie_posters, show_posters, collection_posters
+        
+        if should_process_item and data_dict and "set" in data_dict:
+            should_skip = False
+            check_title = "Unknown"
+            
+            # If you don't own the show, you don't need any posters from it.
+            if data_dict["set"].get("show"):
+                check_title = data_dict["set"]["show"]["name"]
+                try:
+                    check_year = int(data_dict["set"]["show"]["first_air_date"][:4])
+                except:
+                    check_year = None
+                    
+                if not should_process_item(check_title, check_year):
+                    should_skip = True
+
+            # If the set is for ONE movie and you don't own it, skip it.
+            elif data_dict["set"].get("movie"):
+                check_title = data_dict["set"]["movie"]["title"]
+                try:
+                    check_year = int(data_dict["set"]["movie"]["release_date"][:4])
+                except:
+                    check_year = None
+                    
+                if not should_process_item(check_title, check_year):
+                    should_skip = True
+
+            if should_skip:
+                return [], [], []
         
         # Determine media type
         media_type = self._determine_media_type(poster_data)

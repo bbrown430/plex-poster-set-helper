@@ -2,6 +2,7 @@ import time
 import requests
 import tempfile
 import os
+import threading
 from ..core.models import PosterInfo
 
 
@@ -22,6 +23,18 @@ class PosterUploadService:
             'Sec-Fetch-Mode': 'no-cors',
             'Sec-Fetch-Site': 'same-origin',
         })
+        self._item_cache = {}
+        self._cache_lock = threading.Lock()
+        
+    def _get_cached_item(self, title, year, search_func, *args):
+        """Helper to avoid hitting Plex API for the same item repeatedly."""
+        cache_key = f"{title}_{year if year else 'None'}_{search_func.__name__}"
+        
+        with self._cache_lock:
+            if cache_key not in self._item_cache:
+                self._item_cache[cache_key] = search_func(*args)
+        
+        return self._item_cache[cache_key]
     
     def _download_image(self, url: str) -> str | None:
         """
@@ -71,7 +84,7 @@ class PosterUploadService:
         try:
             if filepath and os.path.exists(filepath):
                 # Give Plex a moment to process the file
-                time.sleep(2)
+                time.sleep(0.1)
                 os.remove(filepath)
                 print(f"🗑 Cleaned up temporary file: {os.path.basename(filepath)}")
         except Exception as e:
@@ -128,18 +141,13 @@ class PosterUploadService:
         self._add_label(item, 'plex_poster_set_helper')
         self._add_label(item, f'plex_poster_set_helper_{source}')
     
-    def upload_movie_poster(self, poster: PosterInfo, library_name: str):
+    def upload_movie_poster(self, poster: PosterInfo):
         """Upload poster to a movie."""
-        # Get library objects
-        if library_name in self.plex_service.config.movie_library:
-            libraries = self.plex_service.movie_libraries
-        else:
-            print(f'Library {library_name} not configured')
-            return
-            
-        movie_items = self.plex_service.find_in_library(libraries, poster.title, poster.year)
+
+        libraries = self.plex_service.movie_libraries    
+        movie_items = self._get_cached_item(poster.title, poster.year, self.plex_service.find_in_library, libraries, poster.title, poster.year)
         if not movie_items:
-            print(f'Movie {poster.title} not found in library {library_name}')
+            print(f'Movie {poster.title} not found, skipping.')
             return
         
         # Download the image first
@@ -164,18 +172,13 @@ class PosterUploadService:
             # Clean up temporary file
             self._cleanup_temp_file(image_path)
     
-    def upload_collection_poster(self, poster: PosterInfo, library_name: str):
+    def upload_collection_poster(self, poster: PosterInfo):
         """Upload poster to a collection."""
-        # Get library objects
-        if library_name in self.plex_service.config.movie_library:
-            libraries = self.plex_service.movie_libraries
-        else:
-            print(f'Library {library_name} not configured')
-            return
-            
-        collection_items = self.plex_service.find_collection(libraries, poster.title)
+
+        libraries = self.plex_service.movie_libraries + self.plex_service.tv_libraries
+        collection_items = self._get_cached_item(poster.title, None, self.plex_service.find_collection, libraries, poster.title)
         if not collection_items:
-            print(f'Collection {poster.title} not found in library {library_name}')
+            print(f'Collection {poster.title} not found, skipping.')
             return
         
         # Download the image first
@@ -243,18 +246,13 @@ class PosterUploadService:
         # Default to show
         return tv_show
     
-    def upload_tv_poster(self, poster: PosterInfo, library: str):
+    def upload_tv_poster(self, poster: PosterInfo):
         """Upload poster to a TV show or season."""
-        # Get library objects
-        if library in self.plex_service.config.tv_library:
-            libraries = self.plex_service.tv_libraries
-        else:
-            print(f'Library {library} not configured')
-            return
-            
-        tv_shows = self.plex_service.find_in_library(libraries, poster.title, poster.year)
+        
+        libraries = self.plex_service.tv_libraries
+        tv_shows = self._get_cached_item(poster.title, poster.year, self.plex_service.find_in_library, libraries, poster.title, poster.year)
         if not tv_shows:
-            print(f'TV show {poster.title} not found in library {library}')
+            print(f'TV show {poster.title} not found, skipping.')
             return
         
         # Download the image first
@@ -303,11 +301,8 @@ class PosterUploadService:
     def process_poster(self, poster: PosterInfo):
         """Process a poster and upload it to the appropriate library."""
         if poster.is_collection():
-            for lib in self.plex_service.config.movie_library:
-                self.upload_collection_poster(poster, lib)
+            self.upload_collection_poster(poster)
         elif poster.is_movie():
-            for lib in self.plex_service.config.movie_library:
-                self.upload_movie_poster(poster, lib)
+            self.upload_movie_poster(poster)
         elif poster.is_tv_show():
-            for lib in self.plex_service.config.tv_library:
-                self.upload_tv_poster(poster, lib)
+            self.upload_tv_poster(poster)

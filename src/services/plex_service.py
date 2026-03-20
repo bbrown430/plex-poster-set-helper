@@ -1,11 +1,13 @@
 """Plex service for managing Plex server connections and operations."""
 
+from turtle import title
 from typing import List, Optional, Tuple
 import xml.etree.ElementTree
 
 from plexapi.server import PlexServer
 import plexapi.exceptions
 import requests
+import threading
 
 from ..core.config import Config
 
@@ -23,6 +25,9 @@ class PlexService:
         self.plex: Optional[PlexServer] = None
         self.tv_libraries: List = []
         self.movie_libraries: List = []
+        
+        self._library_titles_cache = {}
+        self._cache_lock = threading.Lock()
     
     def setup(self, gui_mode: bool = False) -> Tuple[List, List]:
         """Setup Plex server connection and libraries.
@@ -137,7 +142,15 @@ class PlexService:
         # Try fuzzy matching if exact match failed
         for lib in libraries:
             try:
-                all_titles = [item.title for item in lib.all()]
+                lib_name = getattr(lib, 'title', str(id(lib)))
+                
+                with self._cache_lock:
+                    if lib_name not in self._library_titles_cache:
+                        print(f"ℹ Fetching and caching title list for library '{lib_name}'...")
+                        # cache lib.all titles to avoid multiple API calls during fuzzy matching
+                        self._library_titles_cache[lib_name] = [item.title for item in lib.all()]
+                
+                all_titles = self._library_titles_cache[lib_name]
                 matches = get_close_matches(mapped_title, all_titles, n=1, cutoff=0.8)
                 
                 if matches:
@@ -163,7 +176,8 @@ class PlexService:
         if items:
             return items
         
-        print(f"{title} not found, skipping.")
+        year_str = f" - {year}" if year else ""
+        print(f"{title}{year_str} not found, skipping.")
         return None
     
     def find_collection(self, libraries: List, title: str) -> Optional[List]:
